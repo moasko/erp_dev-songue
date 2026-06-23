@@ -6,7 +6,7 @@ import { getInstallationState, setupOwnerAccount } from '~/server/auth'
 export const Route = createFileRoute('/register')({
   beforeLoad: async () => {
     const installation = await getInstallationState()
-    if (!installation.needsSetup) {
+    if (!installation?.needsSetup) {
       throw redirect({ to: '/login', search: { redirect: undefined } })
     }
   },
@@ -38,8 +38,8 @@ function RegisterPage() {
     })
     setIsSubmitting(false)
 
-    if (!result.ok) {
-      setError(result.message)
+    if (!result || !result.ok) {
+      setError(result?.message ?? 'Erreur lors de la creation du compte.')
       return
     }
 
