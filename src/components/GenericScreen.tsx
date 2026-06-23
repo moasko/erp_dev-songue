@@ -49,7 +49,7 @@ export function GenericScreen({ title, description }: { title: string; descripti
             </thead>
             <tbody className="divide-y divide-slate-100">
               {[1, 2, 3, 4, 5, 6].map((i) => (
-                <tr key={i} className="hover:bg-slate-50 transition-colors">
+                <tr key={i} className="list-row">
                   <td className="px-4 py-3 font-medium text-slate-950">REF-00{i}</td>
                   <td className="px-4 py-3 text-slate-600">Donnée d'exemple liée à {title.toLowerCase()}</td>
                   <td className="px-4 py-3">

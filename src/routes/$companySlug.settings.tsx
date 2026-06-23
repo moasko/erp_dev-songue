@@ -25,7 +25,8 @@ function SettingsPage() {
   const [message, setMessage] = React.useState<string | null>(null)
 
   const refresh = React.useCallback(async () => {
-    setData(await getCompanyAdministration({ data: { companySlug } }))
+    const administrationData = await getCompanyAdministration({ data: { companySlug } })
+    setData(administrationData)
   }, [companySlug])
 
   React.useEffect(() => {
@@ -34,7 +35,8 @@ function SettingsPage() {
 
   async function handleCreateRole(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const form = new FormData(event.currentTarget)
+    const formElement = event.currentTarget
+    const form = new FormData(formElement)
     const permissionKeys = form.getAll('permissionKeys').map(String)
     const result = await createRole({
       data: {
@@ -46,14 +48,15 @@ function SettingsPage() {
     })
     setMessage(result.ok ? 'Role cree.' : result.message)
     if (result.ok) {
-      event.currentTarget.reset()
+      formElement.reset()
       await refresh()
     }
   }
 
   async function handleAddManager(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const form = new FormData(event.currentTarget)
+    const formElement = event.currentTarget
+    const form = new FormData(formElement)
     const result = await addManager({
       data: {
         companySlug,
@@ -65,7 +68,7 @@ function SettingsPage() {
     })
     setMessage(result.ok ? 'Gestionnaire ajoute.' : result.message)
     if (result.ok) {
-      event.currentTarget.reset()
+      formElement.reset()
       await refresh()
     }
   }
@@ -73,21 +76,38 @@ function SettingsPage() {
   async function handleUpdateCompany(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
-    const result = await updateCompanyProfile({
-      data: {
-        companySlug,
-        name: String(form.get('name') ?? ''),
-        legalName: String(form.get('legalName') ?? ''),
-        logoUrl: String(form.get('logoUrl') ?? ''),
-        address: String(form.get('address') ?? ''),
-        phone: String(form.get('phone') ?? ''),
-        email: String(form.get('email') ?? ''),
-        taxId: String(form.get('taxId') ?? ''),
-        website: String(form.get('website') ?? ''),
-      },
-    })
-    setMessage(result.ok ? 'Informations entreprise mises a jour.' : result.message)
-    if (result.ok) await refresh()
+    const logoUrl = normalizeOptionalUrl(String(form.get('logoUrl') ?? ''))
+    const website = normalizeOptionalUrl(String(form.get('website') ?? ''))
+    if (!isOptionalHttpUrl(logoUrl)) {
+      setMessage('Logo URL invalide. Exemple attendu: https://exemple.com/logo.png')
+      return
+    }
+    if (!isOptionalHttpUrl(website)) {
+      setMessage('Site web invalide. Exemple attendu: https://exemple.com')
+      return
+    }
+    try {
+      const result = await updateCompanyProfile({
+        data: {
+          companySlug,
+          name: String(form.get('name') ?? ''),
+          legalName: String(form.get('legalName') ?? ''),
+          logoUrl,
+          address: String(form.get('address') ?? ''),
+          phone: String(form.get('phone') ?? ''),
+          email: String(form.get('email') ?? ''),
+          taxId: String(form.get('taxId') ?? ''),
+          website,
+        },
+      })
+      setMessage(result.ok ? 'Informations entreprise mises a jour.' : result.message)
+      if (result.ok) {
+        setData((current) => current?.ok ? { ...current, company: result.company } : current)
+        await refresh()
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Impossible de mettre a jour les informations.')
+    }
   }
 
   return (
@@ -123,10 +143,22 @@ function SettingsPage() {
         </nav>
 
         <div className="min-w-0 flex-1">
-          {activeTab === 'general' && <GeneralSettings companySlug={companySlug} data={data} onSubmit={handleUpdateCompany} />}
-          {activeTab === 'users' && <UsersSettings data={data} onSubmit={handleAddManager} />}
-          {activeTab === 'roles' && <RolesSettings data={data} onSubmit={handleCreateRole} />}
-          {activeTab === 'notifications' && <NotificationsSettings />}
+          {data === null ? (
+            <SettingsSection title="Chargement" description="Recuperation des informations d'administration.">
+              <p className="text-sm text-slate-500">Patiente un instant...</p>
+            </SettingsSection>
+          ) : !data.ok ? (
+            <SettingsSection title="Acces impossible" description="Les parametres de cette entreprise ne sont pas disponibles.">
+              <p className="text-sm font-semibold text-slate-700">{data.message}</p>
+            </SettingsSection>
+          ) : (
+            <>
+              {activeTab === 'general' && <GeneralSettings companySlug={companySlug} data={data} onSubmit={handleUpdateCompany} />}
+              {activeTab === 'users' && <UsersSettings data={data} onSubmit={handleAddManager} />}
+              {activeTab === 'roles' && <RolesSettings data={data} onSubmit={handleCreateRole} />}
+              {activeTab === 'notifications' && <NotificationsSettings />}
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -144,11 +176,22 @@ function GeneralSettings({
 }) {
   const company = data?.ok ? data.company : null
   const logoUrl = company?.logoUrl ?? ''
+  const formKey = [
+    company?.id,
+    company?.name,
+    company?.legalName,
+    company?.logoUrl,
+    company?.address,
+    company?.phone,
+    company?.email,
+    company?.taxId,
+    company?.website,
+  ].join('|')
 
   return (
     <div className="space-y-6">
       <SettingsSection title="Informations entreprise" description="Ces informations seront utilisees sur les documents, devis et factures.">
-        <form onSubmit={onSubmit} className="grid gap-5">
+        <form key={formKey} onSubmit={onSubmit} className="grid gap-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
             <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-50">
               {logoUrl ? (
@@ -238,14 +281,14 @@ function UsersSettings({
           </thead>
           <tbody className="divide-y divide-slate-100">
             {users.map((user) => (
-              <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+              <tr key={user.id} className="list-row">
                 <td className="px-4 py-3">
                   <p className="font-semibold text-slate-900">{user.name}</p>
                   <p className="text-xs text-slate-500">{user.email}</p>
                 </td>
                 <td className="px-4 py-3">{user.roles.join(', ')}</td>
                 <td className="px-4 py-3">
-                  <span className={`rounded px-2 py-0.5 text-xs font-semibold ${user.status === 'Active' ? 'bg-emerald-50 text-emerald-700' : user.status === 'Invited' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{user.status}</span>
+                  <span className={`rounded px-2 py-0.5 text-xs font-semibold ${statusClass(user.status)}`}>{statusLabel(user.status)}</span>
                 </td>
               </tr>
             ))}
@@ -291,7 +334,7 @@ function RolesSettings({
 
       <div className="grid gap-4 sm:grid-cols-2">
         {roles.map((role) => (
-          <div key={role.id} className="rounded border border-slate-200 bg-white p-5">
+          <div key={role.id} className="list-row rounded border border-slate-200 bg-white p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="font-bold text-slate-950">{role.name}</h3>
@@ -324,7 +367,7 @@ function NotificationsSettings() {
   return (
     <div className="rounded border border-slate-200 bg-white divide-y divide-slate-100">
       {settings.map((setting) => (
-        <div key={setting.id} className="flex items-center justify-between px-5 py-4">
+        <div key={setting.id} className="list-row flex items-center justify-between px-5 py-4">
           <div>
             <p className="text-sm font-bold text-slate-900">{setting.label}</p>
             <p className="text-xs text-slate-500 mt-0.5">{setting.description}</p>
@@ -366,4 +409,37 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
       <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-800">{value}</div>
     </div>
   )
+}
+
+function isOptionalHttpUrl(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return true
+  try {
+    const url = new URL(trimmed)
+    return ['http:', 'https:'].includes(url.protocol)
+  } catch {
+    return false
+  }
+}
+
+function normalizeOptionalUrl(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}
+
+function statusLabel(status: string) {
+  const normalized = status.toUpperCase()
+  if (normalized === 'ACTIVE') return 'Actif'
+  if (normalized === 'INVITED') return 'Invite'
+  if (normalized === 'SUSPENDED') return 'Suspendu'
+  return status
+}
+
+function statusClass(status: string) {
+  const normalized = status.toUpperCase()
+  if (normalized === 'ACTIVE') return 'bg-emerald-50 text-emerald-700'
+  if (normalized === 'INVITED') return 'bg-amber-50 text-amber-700'
+  return 'bg-slate-100 text-slate-600'
 }

@@ -4,32 +4,21 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
 }
 
-
-
-
-
-
-
-
-
-
-
 model User {
-  id          String              @id @default(cuid())
-  email       String              @unique
-  name        String
-  passwordHash String              @default("")
-  isOwner     Boolean             @default(false)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  sessions    Session[]
-  memberships CompanyMembership[]
-  ownedWorkspaces Workspace[]      @relation("WorkspaceOwner")
-  invitations CompanyInvitation[]
-  auditLogs   AuditLog[]          @relation("AuditActor")
+  id              String              @id @default(cuid())
+  email           String              @unique
+  name            String
+  passwordHash    String              @default("")
+  isOwner         Boolean             @default(false)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  sessions        Session[]
+  memberships     CompanyMembership[]
+  ownedWorkspaces Workspace[]         @relation("WorkspaceOwner")
+  invitations     CompanyInvitation[]
+  auditLogs       AuditLog[]          @relation("AuditActor")
 }
 
 model Session {
@@ -45,65 +34,69 @@ model Session {
 }
 
 model Workspace {
-  id             String         @id @default(cuid())
-  ownerId        String
-  name           String
-  slug           String         @unique
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  owner          User           @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  companies      Company[]
-  subscriptions  Subscription[]
+  id            String         @id @default(cuid())
+  ownerId       String
+  name          String
+  slug          String         @unique
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  owner         User           @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  companies     Company[]
+  subscriptions Subscription[]
 
   @@index([ownerId])
 }
 
 model Company {
-  id          String              @id @default(cuid())
-  workspaceId String
-  name        String
-  slug        String              @unique
-  legalName   String?
-  logoUrl     String?
-  address     String?
-  phone       String?
-  email       String?
-  taxId       String?
-  website     String?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  memberships CompanyMembership[]
-  invitations CompanyInvitation[]
-  roles       Role[]
-  modules     CompanyModule[]
-  customers   Customer[]
-  orders      Order[]
-  auditLogs   AuditLog[]
-  items         CatalogItem[]
-  categories    Category[]
-  bankAccounts  BankAccount[]
-  transactions  Transaction[]
-  employees     Employee[]
-  warehouses    Warehouse[]
-  stockMovements StockMovement[]
-  deals         Deal[]
-  leads         Lead[]
-  quoteSettings QuoteSettings?
-  quotes        Quote[]
+  id               String              @id @default(cuid())
+  workspaceId      String
+  name             String
+  slug             String              @unique
+  legalName        String?
+  logoUrl          String?
+  address          String?
+  phone            String?
+  email            String?
+  taxId            String?
+  website          String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  memberships      CompanyMembership[]
+  invitations      CompanyInvitation[]
+  roles            Role[]
+  modules          CompanyModule[]
+  customers        Customer[]
+  orders           Order[]
+  auditLogs        AuditLog[]
+  items            CatalogItem[]
+  categories       Category[]
+  bankAccounts     BankAccount[]
+  transactions     Transaction[]
+  salesInvoices    SalesInvoice[]
+  purchaseInvoices PurchaseInvoice[]
+  payments         Payment[]
+  employees        Employee[]
+  warehouses       Warehouse[]
+  stockMovements   StockMovement[]
+  deals            Deal[]
+  leads            Lead[]
+  quoteSettings    QuoteSettings?
+  quotes           Quote[]
+  vendors          Vendor[]
 
   @@index([workspaceId])
 }
 
 model CompanyMembership {
-  id        String           @id @default(cuid())
+  id        String     @id @default(cuid())
   userId    String
   companyId String
-  status    String @default("ACTIVE")
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  status    String     @default("ACTIVE")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
   roles     UserRole[]
 
   @@unique([userId, companyId])
@@ -158,61 +151,61 @@ model RolePermission {
 }
 
 model ModuleDefinition {
-  id          String           @id @default(cuid())
-  key         String           @unique
+  id          String          @id @default(cuid())
+  key         String          @unique
   name        String
   category    String
   description String?
-  createdAt   DateTime         @default(now())
+  createdAt   DateTime        @default(now())
   companies   CompanyModule[]
   permissions Permission[]
 }
 
 model Plan {
-  id              String            @id @default(cuid())
-  key             String            @unique
-  name            String
-  description     String?
+  id                String         @id @default(cuid())
+  key               String         @unique
+  name              String
+  description       String?
   monthlyPriceCents Int
   yearlyPriceCents  Int
-  maxCompanies    Int
-  maxUsers        Int
-  moduleLimit     Int?
-  createdAt       DateTime          @default(now())
-  subscriptions   Subscription[]
+  maxCompanies      Int
+  maxUsers          Int
+  moduleLimit       Int?
+  createdAt         DateTime       @default(now())
+  subscriptions     Subscription[]
 }
 
 model Subscription {
-  id                     String             @id @default(cuid())
+  id                     String    @id @default(cuid())
   workspaceId            String
   planId                 String
-  status                 String @default("TRIALING")
+  status                 String    @default("TRIALING")
   interval               String    @default("MONTHLY")
   trialEndsAt            DateTime?
   currentPeriodEndsAt    DateTime?
   providerCustomerId     String?
   providerSubscriptionId String?
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
-  workspace              Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  plan                   Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  workspace              Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan                   Plan      @relation(fields: [planId], references: [id], onDelete: Restrict)
 
   @@index([workspaceId, status])
   @@index([planId])
 }
 
 model CompanyInvitation {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   companyId  String
   inviterId  String
   email      String
   roleName   String
-  tokenHash  String   @unique
+  tokenHash  String    @unique
   expiresAt  DateTime
   acceptedAt DateTime?
-  createdAt  DateTime @default(now())
-  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  inviter    User     @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  inviter    User      @relation(fields: [inviterId], references: [id], onDelete: Cascade)
 
   @@index([companyId, email])
   @@index([expiresAt])
@@ -233,47 +226,48 @@ model CompanyModule {
 }
 
 model Customer {
-  id        String   @id @default(cuid())
-  companyId String
-  name      String
-  email     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  orders    Order[]
-  deals     Deal[]
-  quotes    Quote[]
+  id            String         @id @default(cuid())
+  companyId     String
+  name          String
+  email         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orders        Order[]
+  deals         Deal[]
+  quotes        Quote[]
+  salesInvoices SalesInvoice[]
 
   @@index([companyId])
 }
 
 model Order {
-  id         String    @id @default(cuid())
+  id         String   @id @default(cuid())
   companyId  String
   customerId String
   reference  String
   totalCents Int
-  currency   String    @default("FCFA")
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  currency   String   @default("FCFA")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
 
   @@unique([companyId, reference])
   @@index([companyId, customerId])
 }
 
 model AuditLog {
-  id        String      @id @default(cuid())
+  id        String   @id @default(cuid())
   companyId String
   actorId   String?
   action    String
   entity    String
   entityId  String
   metadata  String?
-  createdAt DateTime    @default(now())
-  company   Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  actor     User?       @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  actor     User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([companyId, createdAt])
   @@index([actorId])
@@ -282,71 +276,71 @@ model AuditLog {
 // --- DOMAIN DATA MODELS ---
 
 model CatalogItem {
-  id            String    @id @default(cuid())
-  companyId     String
-  type          String    // 'Product' | 'Service'
-  sku           String
-  name          String
-  description   String?
-  supplier      String?
-  price         Int
-  wholesalePrice Int      @default(0)
-  cost          Int       @default(0)
-  stock         Int?
-  minStockLevel Int?
+  id             String      @id @default(cuid())
+  companyId      String
+  type           String // 'Product' | 'Service'
+  sku            String
+  name           String
+  description    String?
+  supplier       String?
+  price          Int
+  wholesalePrice Int         @default(0)
+  cost           Int         @default(0)
+  stock          Int?
+  minStockLevel  Int?
   imageUrl       String?
-  categoryId    String?
-  status        String    @default("Active") // 'Active' | 'Draft' | 'Archived'
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  category      Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  quoteLines    QuoteLine[]
+  categoryId     String?
+  status         String      @default("Active") // 'Active' | 'Draft' | 'Archived'
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  company        Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category       Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  quoteLines     QuoteLine[]
 
   @@unique([companyId, sku])
   @@index([companyId, type])
 }
 
 model QuoteSettings {
-  id             String   @id @default(cuid())
-  companyId      String   @unique
-  logoUrl        String?
-  legalName      String?
-  address        String?
-  phone          String?
-  email          String?
-  taxId          String?
-  footerNote     String   @default("Merci pour votre confiance.")
-  paymentTerms   String   @default("Validite 30 jours. Paiement selon accord commercial.")
-  accentColor    String   @default("#0f172a")
-  nextNumber     Int      @default(1)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  companyId    String   @unique
+  logoUrl      String?
+  legalName    String?
+  address      String?
+  phone        String?
+  email        String?
+  taxId        String?
+  footerNote   String   @default("Merci pour votre confiance.")
+  paymentTerms String   @default("Validite 30 jours. Paiement selon accord commercial.")
+  accentColor  String   @default("#0f172a")
+  nextNumber   Int      @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 }
 
 model Quote {
-  id             String      @id @default(cuid())
-  companyId      String
-  customerId     String?
-  reference      String
-  title          String
-  status         String      @default("Draft")
-  issueDate      DateTime    @default(now())
-  validUntil     DateTime
-  currency       String      @default("FCFA")
-  subtotalCents  Int         @default(0)
-  discountRate   Int         @default(0)
-  taxRate        Int         @default(0)
-  totalCents     Int         @default(0)
-  notes          String?
-  terms          String?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  acceptedAt     DateTime?
-  company        Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer       Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  lines          QuoteLine[]
+  id            String      @id @default(cuid())
+  companyId     String
+  customerId    String?
+  reference     String
+  title         String
+  status        String      @default("Draft")
+  issueDate     DateTime    @default(now())
+  validUntil    DateTime
+  currency      String      @default("FCFA")
+  subtotalCents Int         @default(0)
+  discountRate  Int         @default(0)
+  taxRate       Int         @default(0)
+  totalCents    Int         @default(0)
+  notes         String?
+  terms         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  acceptedAt    DateTime?
+  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer      Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  lines         QuoteLine[]
 
   @@unique([companyId, reference])
   @@index([companyId, status])
@@ -354,46 +348,47 @@ model Quote {
 }
 
 model QuoteLine {
-  id            String       @id @default(cuid())
-  quoteId       String
-  itemId        String?
-  description   String
-  quantity      Int
-  unitPrice     Int
-  totalCents    Int
-  sortOrder     Int          @default(0)
-  quote         Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  item          CatalogItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  id          String       @id @default(cuid())
+  quoteId     String
+  itemId      String?
+  description String
+  quantity    Int
+  unitPrice   Int
+  totalCents  Int
+  sortOrder   Int          @default(0)
+  quote       Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  item        CatalogItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
 
   @@index([quoteId])
   @@index([itemId])
 }
 
 model Category {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   companyId String
   name      String
-  type      String   // 'Product' | 'Service'
-  color     String   @default("slate")
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  type      String // 'Product' | 'Service'
+  color     String        @default("slate")
+  company   Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   items     CatalogItem[]
 
   @@unique([companyId, name])
 }
 
 model BankAccount {
-  id            String   @id @default(cuid())
+  id            String        @id @default(cuid())
   companyId     String
   name          String
   accountNumber String?
-  type          String   // 'Checking' | 'Savings' | 'Cash' | 'CreditCard'
-  currency      String   @default("FCFA")
-  balance       Int      @default(0)
-  status        String   @default("Active")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  type          String // 'Checking' | 'Savings' | 'Cash' | 'CreditCard'
+  currency      String        @default("FCFA")
+  balance       Int           @default(0)
+  status        String        @default("Active")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   transactions  Transaction[]
+  payments      Payment[]
 
   @@index([companyId])
 }
@@ -405,7 +400,7 @@ model Transaction {
   date        DateTime    @default(now())
   description String
   amount      Int
-  type        String      // 'Income' | 'Expense' | 'Transfer'
+  type        String // 'Income' | 'Expense' | 'Transfer'
   category    String
   reference   String?
   status      String      @default("Completed") // 'Completed' | 'Pending' | 'Failed'
@@ -413,9 +408,85 @@ model Transaction {
   updatedAt   DateTime    @updatedAt
   company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   account     BankAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  payments    Payment[]
 
   @@index([companyId, date])
   @@index([accountId])
+}
+
+model SalesInvoice {
+  id            String    @id @default(cuid())
+  companyId     String
+  customerId    String?
+  number        String
+  issueDate     DateTime  @default(now())
+  dueDate       DateTime?
+  status        String    @default("Draft") // 'Draft' | 'Sent' | 'PartiallyPaid' | 'Paid' | 'Overdue' | 'Cancelled'
+  subtotalCents Int       @default(0)
+  taxCents      Int       @default(0)
+  totalCents    Int       @default(0)
+  paidCents     Int       @default(0)
+  currency      String    @default("FCFA")
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  payments      Payment[]
+
+  @@unique([companyId, number])
+  @@index([companyId, status])
+  @@index([customerId])
+}
+
+model PurchaseInvoice {
+  id         String    @id @default(cuid())
+  companyId  String
+  vendorId   String?
+  vendorName String
+  reference  String
+  issueDate  DateTime  @default(now())
+  dueDate    DateTime?
+  status     String    @default("Paid") // 'Draft' | 'Pending' | 'PartiallyPaid' | 'Paid' | 'Overdue' | 'Cancelled'
+  category   String
+  totalCents Int
+  paidCents  Int       @default(0)
+  currency   String    @default("FCFA")
+  notes      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vendor     Vendor?   @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  payments   Payment[]
+
+  @@unique([companyId, reference])
+  @@index([companyId, status])
+  @@index([vendorId])
+}
+
+model Payment {
+  id                String           @id @default(cuid())
+  companyId         String
+  accountId         String
+  transactionId     String?
+  salesInvoiceId    String?
+  purchaseInvoiceId String?
+  date              DateTime         @default(now())
+  amount            Int
+  direction         String // 'In' | 'Out'
+  method            String           @default("Cash")
+  reference         String?
+  createdAt         DateTime         @default(now())
+  company           Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  account           BankAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transaction       Transaction?     @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  salesInvoice      SalesInvoice?    @relation(fields: [salesInvoiceId], references: [id], onDelete: Cascade)
+  purchaseInvoice   PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, date])
+  @@index([accountId])
+  @@index([salesInvoiceId])
+  @@index([purchaseInvoiceId])
 }
 
 model Employee {
@@ -459,7 +530,7 @@ model StockMovement {
   companyId   String
   warehouseId String
   itemId      String
-  type        String   // 'In' | 'Out' | 'Transfer' | 'Adjustment'
+  type        String // 'In' | 'Out' | 'Transfer' | 'Adjustment'
   quantity    Int
   reference   String
   date        DateTime @default(now())
@@ -508,4 +579,74 @@ model Lead {
   tenant     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId, status])
+}
+
+model Vendor {
+  id               String            @id @default(cuid())
+  companyId        String
+  name             String
+  category         String
+  owner            String
+  city             String
+  spend            String
+  orders           Int
+  onTime           Int
+  quality          Int
+  risk             String // 'Faible' | 'Moyen' | 'Eleve'
+  status           String // 'Strategique' | 'Actif' | 'A surveiller' | 'Suspendu'
+  nextReview       String
+  contract         String
+  paymentTerms     String
+  email            String
+  phone            String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  purchaseInvoices PurchaseInvoice[]
+
+  @@index([companyId, status])
+}
+
+model Place {
+  id          String   @id @default(cuid())
+  name        String
+  category    String?
+  address     String?
+  commune     String?
+  city        String?
+  countryCode String   @default("ci")
+  latitude    Float
+  longitude   Float
+  source      String   @default("USER") // USER | ADMIN | GEOAPIFY | OSM
+  externalId  String?
+  status      String   @default("PENDING") // PENDING | VERIFIED | REJECTED
+  verified    Boolean  @default(false)
+  confidence  Int      @default(50)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+  @@index([category])
+  @@index([commune])
+  @@index([city])
+  @@index([countryCode])
+  @@index([latitude, longitude])
+  @@unique([source, externalId])
+}
+
+model PlaceSearchCache {
+  id         String   @id @default(cuid())
+  queryKey   String   @unique
+  query      String
+  countryCode String  @default("ci")
+  latitude   Float?
+  longitude  Float?
+  results    String
+  expiresAt  DateTime
+  lastUsedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([query])
+  @@index([expiresAt])
 }

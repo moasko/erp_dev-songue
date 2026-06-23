@@ -6,6 +6,7 @@ export interface Company {
   id: CompanyId
   slug: string
   name: string
+  logoUrl?: string | null
   group: string
   initial: string
   color: string
@@ -27,12 +28,13 @@ export function CompanyProvider({
 }: {
   children: ReactNode
   activeCompanySlug: string
-  companies: Array<{ id: string; name: string; slug: string }>
+  companies: Array<{ id: string; name: string; slug: string; logoUrl?: string | null }>
 }) {
   const normalizedCompanies = companies.map((company, index) => ({
     id: company.slug,
     slug: company.slug,
     name: company.name,
+    logoUrl: company.logoUrl ?? null,
     group: 'Entreprise',
     initial: company.name.slice(0, 1).toUpperCase(),
     color: companyColors[index % companyColors.length],
@@ -42,6 +44,7 @@ export function CompanyProvider({
     id: activeCompanySlug,
     slug: activeCompanySlug,
     name: activeCompanySlug,
+    logoUrl: null,
     group: 'Entreprise',
     initial: activeCompanySlug.slice(0, 1).toUpperCase(),
     color: companyColors[0],

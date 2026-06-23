@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { CreditCard, ReceiptText, Smartphone, Wallet } from 'lucide-react'
+import { useState } from 'react'
+import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 import { getPosData } from '~/server/dataFetchers'
 import { formatMoney } from '~/utils/currency'
 
@@ -11,9 +13,13 @@ export const Route = createFileRoute('/$companySlug/pos/sales-report')({
 function PosSalesReport() {
   const { companySlug } = Route.useParams()
   const { tickets } = Route.useLoaderData()
-  const cash = totalFor(tickets, 'Caisse boutique')
-  const mobile = totalFor(tickets, 'Mobile money')
-  const card = totalFor(tickets, 'Paiement carte')
+  const [datePreset, setDatePreset] = useState<DatePreset>('today')
+  const [startDate, setStartDate] = useState(todayInputValue())
+  const [endDate, setEndDate] = useState(todayInputValue())
+  const filteredTickets = tickets.filter((ticket: any) => matchesDatePreset(ticket.date, datePreset, startDate, endDate))
+  const cash = totalFor(filteredTickets, 'Caisse boutique')
+  const mobile = totalFor(filteredTickets, 'Mobile money')
+  const card = totalFor(filteredTickets, 'Paiement carte')
   const total = cash + mobile + card
 
   return (
@@ -27,6 +33,17 @@ function PosSalesReport() {
         <Link to="/$companySlug/pos/register" params={{ companySlug }} className="inline-flex h-11 items-center justify-center rounded bg-slate-950 px-4 text-sm font-bold text-white hover:bg-slate-800 dark:bg-cyan-400 dark:text-slate-950 dark:hover:bg-cyan-300">
           Nouvelle vente
         </Link>
+      </div>
+
+      <div className="mb-6">
+        <DateRangeFilter
+          preset={datePreset}
+          startDate={startDate}
+          endDate={endDate}
+          onPresetChange={setDatePreset}
+          onStartDateChange={setStartDate}
+          onEndDateChange={setEndDate}
+        />
       </div>
 
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -44,15 +61,15 @@ function PosSalesReport() {
           <span className="text-right">Total</span>
         </div>
         <div className="divide-y divide-slate-100 dark:divide-slate-800">
-          {tickets.length > 0 ? tickets.map((ticket: any) => (
-            <article key={ticket.id} className="grid gap-2 px-5 py-4 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-center">
+          {filteredTickets.length > 0 ? filteredTickets.map((ticket: any) => (
+            <article key={ticket.id} className="list-row grid gap-2 px-5 py-4 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-center">
               <div className="font-bold text-slate-950 dark:text-white">{ticket.reference}</div>
               <div className="text-sm text-slate-500 dark:text-slate-400">{new Date(ticket.date).toLocaleString('fr-FR')}</div>
               <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">{paymentLabel(ticket.account?.name)}</div>
               <div className="font-bold text-slate-950 dark:text-white lg:text-right">{formatMoney(ticket.amount)}</div>
             </article>
           )) : (
-            <div className="px-5 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">Aucun encaissement POS.</div>
+            <div className="px-5 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">Aucun encaissement POS sur cette periode.</div>
           )}
         </div>
       </section>

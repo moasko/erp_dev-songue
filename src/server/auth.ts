@@ -8,6 +8,16 @@ import { hashPassword, verifyPassword } from './password'
 const sessionCookieName = 'erp_session'
 const sessionDurationMs = 1000 * 60 * 60 * 24 * 7
 
+const optionalUrlInput = z.preprocess(
+  (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
+  z.string().url().optional(),
+)
+
+const optionalEmailInput = z.preprocess(
+  (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
+  z.string().email().optional(),
+)
+
 type AuthCompany = {
   id: string
   name: string
@@ -33,6 +43,19 @@ function hashToken(token: string) {
 
 function createSessionToken() {
   return randomBytes(32).toString('base64url')
+}
+
+function maskDatabaseUrl(value: string) {
+  if (!value) return 'Non configure'
+  if (value.startsWith('file:')) return value
+  try {
+    const url = new URL(value)
+    if (url.password) url.password = '***'
+    if (url.username) url.username = '***'
+    return url.toString()
+  } catch {
+    return value.replace(/\/\/([^:@/]+):([^@/]+)@/, '//***:***@')
+  }
 }
 
 function setSessionCookie(token: string, expiresAt: Date) {
@@ -241,7 +264,19 @@ export const logout = createServerFn({ method: 'POST' }).handler(async () => {
 })
 
 export const createCompany = createServerFn({ method: 'POST' })
-  .inputValidator(z.object({ name: z.string().min(2), slug: z.string().min(2).regex(/^[a-z0-9-]+$/) }))
+  .inputValidator(
+    z.object({
+      name: z.string().min(2),
+      slug: z.string().min(2).regex(/^[a-z0-9-]+$/),
+      legalName: z.string().optional(),
+      logoUrl: optionalUrlInput,
+      address: z.string().optional(),
+      phone: z.string().optional(),
+      email: optionalEmailInput,
+      taxId: z.string().optional(),
+      website: optionalUrlInput,
+    }),
+  )
   .handler(async ({ data }) => {
     const auth = await readAuthState()
     if (!auth.user?.isOwner) return { ok: false, message: 'Action reservee au proprietaire.' }
@@ -258,6 +293,13 @@ export const createCompany = createServerFn({ method: 'POST' })
       ownerId: auth.user.id,
       name: data.name.trim(),
       slug: data.slug,
+      legalName: data.legalName?.trim(),
+      logoUrl: data.logoUrl?.trim(),
+      address: data.address?.trim(),
+      phone: data.phone?.trim(),
+      email: data.email?.trim(),
+      taxId: data.taxId?.trim(),
+      website: data.website?.trim(),
     })
 
     return { ok: true, companySlug: company.slug }
@@ -328,18 +370,69 @@ export const getCompanyAdministration = createServerFn({ method: 'GET' })
     }
   })
 
+export const getInstallationSettings = createServerFn({ method: 'GET' })
+  .inputValidator(z.object({ companySlug: z.string().min(1) }))
+  .handler(async ({ data }) => {
+    const auth = await readAuthState()
+    const access = auth.companies.find((company) => company.slug === data.companySlug)
+    if (!auth.user?.isOwner && !access?.permissions.includes('company.manage')) {
+      return { ok: false, message: 'Permission insuffisante.' }
+    }
+
+    const { readFile } = await import('node:fs/promises')
+    const packageJson = JSON.parse(await readFile('package.json', 'utf8')) as {
+      name?: string
+      type?: string
+      scripts?: Record<string, string>
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+    const envExample = await readFile('.env.example', 'utf8').catch(() => '')
+    const databaseUrl = process.env.DATABASE_URL || envExample.match(/DATABASE_URL="?([^"\r\n]+)"?/)?.[1] || ''
+
+    return {
+      ok: true,
+      app: {
+        name: packageJson.name ?? 'erp-platform',
+        type: packageJson.type ?? 'module',
+      },
+      scripts: packageJson.scripts ?? {},
+      runtime: {
+        react: packageJson.dependencies?.react ?? '',
+        vite: packageJson.devDependencies?.vite ?? '',
+        prisma: packageJson.devDependencies?.prisma ?? packageJson.dependencies?.['@prisma/client'] ?? '',
+        tanstackStart: packageJson.dependencies?.['@tanstack/react-start'] ?? '',
+      },
+      database: {
+        provider: 'sqlite',
+        url: maskDatabaseUrl(databaseUrl),
+        envKey: 'DATABASE_URL',
+        schema: 'prisma/schema.prisma',
+        config: 'prisma.config.ts',
+      },
+      files: [
+        { label: 'Variables environnement', path: '.env / .env.example' },
+        { label: 'Schema base de donnees', path: 'prisma/schema.prisma' },
+        { label: 'Base locale par defaut', path: 'prisma/dev.db' },
+        { label: 'Configuration Prisma', path: 'prisma.config.ts' },
+        { label: 'Build serveur', path: '.output/server/index.mjs' },
+        { label: 'Manifest PWA', path: 'public/site.webmanifest' },
+      ],
+    }
+  })
+
 export const updateCompanyProfile = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({
       companySlug: z.string().min(1),
       name: z.string().min(2),
       legalName: z.string().optional(),
-      logoUrl: z.string().optional(),
+      logoUrl: optionalUrlInput,
       address: z.string().optional(),
       phone: z.string().optional(),
       email: z.string().optional(),
       taxId: z.string().optional(),
-      website: z.string().optional(),
+      website: optionalUrlInput,
     }),
   )
   .handler(async ({ data }) => {
@@ -513,12 +606,43 @@ async function createSessionForUser(userId: string) {
   setSessionCookie(token, expiresAt)
 }
 
-async function createCompanyForOwner(input: { workspaceId: string; ownerId: string; name: string; slug: string }) {
+async function createCompanyForOwner(input: {
+  workspaceId: string
+  ownerId: string
+  name: string
+  slug: string
+  legalName?: string
+  logoUrl?: string
+  address?: string
+  phone?: string
+  email?: string
+  taxId?: string
+  website?: string
+}) {
   const company = await prisma.company.create({
     data: {
       workspaceId: input.workspaceId,
       name: input.name,
       slug: input.slug,
+      legalName: input.legalName || null,
+      logoUrl: input.logoUrl || null,
+      address: input.address || null,
+      phone: input.phone || null,
+      email: input.email || null,
+      taxId: input.taxId || null,
+      website: input.website || null,
+    },
+  })
+
+  await prisma.quoteSettings.create({
+    data: {
+      companyId: company.id,
+      logoUrl: company.logoUrl,
+      legalName: company.legalName || company.name,
+      address: company.address,
+      phone: company.phone,
+      email: company.email,
+      taxId: company.taxId,
     },
   })
 

@@ -40,7 +40,7 @@ function CrmDashboard() {
         </div>
         <div className="divide-y divide-slate-100 dark:divide-slate-800">
           {recentLeads.length > 0 ? recentLeads.map((lead: any) => (
-            <div key={lead.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div key={lead.id} className="list-row flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <p className="font-bold text-slate-950 dark:text-white">{lead.name}</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">{lead.company ?? lead.source ?? 'Client'}</p>

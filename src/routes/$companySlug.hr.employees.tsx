@@ -49,7 +49,7 @@ function HrEmployees() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {employees.map((emp) => (
-                <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
+                <tr key={emp.id} className="list-row">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="size-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs">

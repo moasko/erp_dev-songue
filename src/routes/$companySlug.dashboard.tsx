@@ -103,7 +103,7 @@ function DashboardPage() {
                   key={action.title}
                   to={action.to}
                   params={{ companySlug }}
-                  className="flex items-start gap-3 rounded px-3 py-3 transition hover:bg-slate-50"
+                  className="list-row flex items-start gap-3 rounded px-3 py-3"
                 >
                   <span className="grid size-9 shrink-0 place-items-center rounded bg-slate-100 text-slate-700">
                     <Icon className="size-4" />
@@ -136,7 +136,7 @@ function MetricCard({ icon: Icon, label, value }: { icon: LucideIcon; label: str
 
 function ActionRow({ title, text, to }: { title: string; text: string; to: string }) {
   return (
-    <Link to={to as any} className="block px-5 py-4 transition hover:bg-slate-50">
+    <Link to={to as any} className="list-row block px-5 py-4">
       <p className="text-sm font-bold text-slate-950">{title}</p>
       <p className="mt-1 text-xs text-slate-500">{text}</p>
     </Link>

@@ -2,9 +2,9 @@ import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 import { prisma } from './db'
 
-async function getCompany(companySlug: string) {
-  const company = await prisma.company.findUnique({ where: { slug: companySlug } })
-  if (!company) throw new Error('Company not found')
+async function getCompany(companySlug: string, permission: string) {
+  const { requireCompanyAccess } = await import('./access')
+  const { company } = await requireCompanyAccess(companySlug, permission)
   return company
 }
 
@@ -60,6 +60,16 @@ const quoteLineInput = z.object({
   unitPrice: z.number().min(0),
 })
 
+const optionalUrlInput = z.preprocess(
+  (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
+  z.string().url().optional(),
+)
+
+const optionalHexColorInput = z.preprocess(
+  (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
+  z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+)
+
 export const createCatalogCategory = createServerFn({ method: 'POST' })
   .inputValidator(z.object({
     companySlug: z.string(),
@@ -68,7 +78,7 @@ export const createCatalogCategory = createServerFn({ method: 'POST' })
     color: z.string().default('slate'),
   }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug)
+    const company = await getCompany(data.companySlug, 'inventory.manage')
     return prisma.category.upsert({
       where: { companyId_name: { companyId: company.id, name: data.name.trim() } },
       update: { type: data.type, color: data.color },
@@ -99,7 +109,7 @@ export const createCatalogItem = createServerFn({ method: 'POST' })
     status: z.enum(['Active', 'Draft', 'Archived']).default('Active'),
   }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug)
+    const company = await getCompany(data.companySlug, 'inventory.manage')
     if (data.categoryId) {
       const category = await prisma.category.findFirst({
         where: { id: data.categoryId, companyId: company.id, type: data.type },
@@ -163,7 +173,7 @@ export const updateCatalogItemStatus = createServerFn({ method: 'POST' })
     status: z.enum(['Active', 'Draft', 'Archived']),
   }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug)
+    const company = await getCompany(data.companySlug, 'inventory.manage')
     const item = await prisma.catalogItem.update({
       where: { id: data.itemId, companyId: company.id },
       data: { status: data.status },
@@ -189,7 +199,7 @@ export const restockCatalogItem = createServerFn({ method: 'POST' })
     reason: z.string().optional(),
   }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug)
+    const company = await getCompany(data.companySlug, 'inventory.manage')
     const existing = await prisma.catalogItem.findFirst({
       where: { id: data.itemId, companyId: company.id, type: 'Product' },
     })
@@ -248,7 +258,7 @@ export const createQuote = createServerFn({ method: 'POST' })
     lines: z.array(quoteLineInput).min(1),
   }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug)
+    const company = await getCompany(data.companySlug, 'invoice.create')
     const settings = await ensureQuoteSettings(company.id, company.name)
 
     let customerId = data.customerId || undefined
@@ -312,7 +322,7 @@ export const updateQuoteStatus = createServerFn({ method: 'POST' })
     status: z.enum(['Draft', 'Sent', 'Accepted', 'Rejected', 'Expired']),
   }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug)
+    const company = await getCompany(data.companySlug, 'invoice.update')
     return prisma.quote.update({
       where: { id: data.quoteId, companyId: company.id },
       data: {
@@ -326,7 +336,7 @@ export const updateQuoteStatus = createServerFn({ method: 'POST' })
 export const saveQuoteSettings = createServerFn({ method: 'POST' })
   .inputValidator(z.object({
     companySlug: z.string(),
-    logoUrl: z.string().optional(),
+    logoUrl: optionalUrlInput,
     legalName: z.string().optional(),
     address: z.string().optional(),
     phone: z.string().optional(),
@@ -334,10 +344,10 @@ export const saveQuoteSettings = createServerFn({ method: 'POST' })
     taxId: z.string().optional(),
     footerNote: z.string().optional(),
     paymentTerms: z.string().optional(),
-    accentColor: z.string().optional(),
+    accentColor: optionalHexColorInput,
   }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug)
+    const company = await getCompany(data.companySlug, 'company.manage')
     await ensureQuoteSettings(company.id, company.name)
 
     return prisma.quoteSettings.update({
@@ -366,7 +376,7 @@ export const createCrmLead = createServerFn({ method: 'POST' })
     source: z.string().default('POS'),
   }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug)
+    const company = await getCompany(data.companySlug, 'customer.create')
     const customer = await prisma.customer.create({
       data: {
         companyId: company.id,
@@ -400,7 +410,7 @@ export const createFinanceTransaction = createServerFn({ method: 'POST' })
     reference: z.string().optional(),
   }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug)
+    const company = await getCompany(data.companySlug, 'finance.manage')
     const fallback = await ensureAccount(company.id, 'Cash', 'Caisse boutique')
     const accountId = data.accountId || fallback.id
     const amount = Math.round(data.amount)
@@ -423,6 +433,120 @@ export const createFinanceTransaction = createServerFn({ method: 'POST' })
     return transaction
   })
 
+export const createPurchaseInvoice = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string(),
+    accountId: z.string().optional(),
+    vendorName: z.string().min(1),
+    reference: z.string().optional(),
+    category: z.string().min(1),
+    amount: z.number().positive(),
+    status: z.enum(['Pending', 'Paid']).default('Paid'),
+    notes: z.string().optional(),
+  }))
+  .handler(async ({ data }) => {
+    const company = await getCompany(data.companySlug, 'finance.manage')
+    const account = data.accountId
+      ? await prisma.bankAccount.findFirst({ where: { id: data.accountId, companyId: company.id } })
+      : await ensureAccount(company.id, 'Cash', 'Caisse boutique')
+    if (!account) throw new Error('Compte introuvable.')
+
+    const amount = Math.round(data.amount)
+    const reference = data.reference?.trim() || `ACH-${Date.now().toString().slice(-6)}`
+    const vendor = await prisma.vendor.findFirst({
+      where: { companyId: company.id, name: data.vendorName.trim() },
+    })
+
+    return prisma.$transaction(async (tx) => {
+      const invoice = await tx.purchaseInvoice.create({
+        data: {
+          companyId: company.id,
+          vendorId: vendor?.id ?? null,
+          vendorName: data.vendorName.trim(),
+          reference,
+          category: data.category.trim(),
+          totalCents: amount,
+          paidCents: data.status === 'Paid' ? amount : 0,
+          status: data.status,
+          notes: data.notes?.trim() || null,
+        },
+        include: { vendor: true },
+      })
+
+      if (data.status === 'Paid') {
+        const transaction = await tx.transaction.create({
+          data: {
+            companyId: company.id,
+            accountId: account.id,
+            description: `${invoice.vendorName} - ${invoice.reference}`,
+            amount,
+            type: 'Expense',
+            category: invoice.category,
+            reference,
+            status: 'Completed',
+          },
+        })
+        await tx.payment.create({
+          data: {
+            companyId: company.id,
+            accountId: account.id,
+            transactionId: transaction.id,
+            purchaseInvoiceId: invoice.id,
+            amount,
+            direction: 'Out',
+            method: account.type,
+            reference,
+          },
+        })
+        await tx.bankAccount.update({
+          where: { id: account.id },
+          data: { balance: { decrement: amount } },
+        })
+      }
+
+      return invoice
+    })
+  })
+
+export const createSalesInvoice = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string(),
+    customerId: z.string().optional(),
+    customerName: z.string().optional(),
+    number: z.string().optional(),
+    amount: z.number().positive(),
+    status: z.enum(['Draft', 'Sent', 'Paid']).default('Draft'),
+    notes: z.string().optional(),
+  }))
+  .handler(async ({ data }) => {
+    const company = await getCompany(data.companySlug, 'invoice.create')
+    let customerId = data.customerId || undefined
+    if (!customerId && data.customerName?.trim()) {
+      const customer = await prisma.customer.create({
+        data: {
+          companyId: company.id,
+          name: data.customerName.trim(),
+        },
+      })
+      customerId = customer.id
+    }
+
+    const amount = Math.round(data.amount)
+    return prisma.salesInvoice.create({
+      data: {
+        companyId: company.id,
+        customerId: customerId ?? null,
+        number: data.number?.trim() || `FAC-${Date.now().toString().slice(-6)}`,
+        status: data.status,
+        subtotalCents: amount,
+        totalCents: amount,
+        paidCents: data.status === 'Paid' ? amount : 0,
+        notes: data.notes?.trim() || null,
+      },
+      include: { customer: true },
+    })
+  })
+
 export const createPosSale = createServerFn({ method: 'POST' })
   .inputValidator(z.object({
     companySlug: z.string(),
@@ -434,7 +558,7 @@ export const createPosSale = createServerFn({ method: 'POST' })
     })).min(1),
   }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug)
+    const company = await getCompany(data.companySlug, 'finance.manage')
     const requestedQuantities = new Map<string, number>()
     for (const line of data.lines) {
       requestedQuantities.set(line.itemId, (requestedQuantities.get(line.itemId) ?? 0) + line.quantity)
@@ -515,4 +639,70 @@ export const createPosSale = createServerFn({ method: 'POST' })
       paymentMethod: data.paymentMethod,
       createdAt: transaction.date.toISOString(),
     }
+  })
+
+export const createVendor = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string(),
+    name: z.string().min(1),
+    category: z.string().min(1),
+    owner: z.string().min(1),
+    city: z.string().min(1),
+    email: z.string().min(1),
+    phone: z.string().min(1),
+    contract: z.string().min(1),
+    paymentTerms: z.string().min(1),
+  }))
+  .handler(async ({ data }) => {
+    const company = await getCompany(data.companySlug, 'finance.manage')
+    return prisma.vendor.create({
+      data: {
+        companyId: company.id,
+        name: data.name.trim(),
+        category: data.category.trim(),
+        owner: data.owner.trim(),
+        city: data.city.trim(),
+        email: data.email.trim(),
+        phone: data.phone.trim(),
+        contract: data.contract.trim(),
+        paymentTerms: data.paymentTerms.trim(),
+        spend: '0 FCFA',
+        orders: 0,
+        onTime: 100,
+        quality: 100,
+        risk: 'Faible',
+        status: 'Actif',
+        nextReview: new Date(new Date().setMonth(new Date().getMonth() + 6)).toLocaleDateString('fr-FR'),
+      },
+    })
+  })
+
+export const updateVendor = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string(),
+    id: z.string(),
+    status: z.enum(['Strategique', 'Actif', 'A surveiller', 'Suspendu']).optional(),
+    risk: z.enum(['Faible', 'Moyen', 'Eleve']).optional(),
+  }))
+  .handler(async ({ data }) => {
+    const company = await getCompany(data.companySlug, 'finance.manage')
+    return prisma.vendor.update({
+      where: { id: data.id, companyId: company.id },
+      data: {
+        ...(data.status ? { status: data.status } : {}),
+        ...(data.risk ? { risk: data.risk } : {}),
+      },
+    })
+  })
+
+export const deleteVendor = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string(),
+    id: z.string(),
+  }))
+  .handler(async ({ data }) => {
+    const company = await getCompany(data.companySlug, 'finance.manage')
+    return prisma.vendor.delete({
+      where: { id: data.id, companyId: company.id },
+    })
   })

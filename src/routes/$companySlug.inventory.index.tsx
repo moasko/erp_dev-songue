@@ -108,7 +108,7 @@ function InventoryDashboard() {
                     const isLow = product.stock !== null && product.minStockLevel !== undefined && product.stock <= product.minStockLevel
 
                     return (
-                      <tr key={product.id} className="hover:bg-slate-50 transition-colors">
+                      <tr key={product.id} className="list-row">
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-3">
                             <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-50">
@@ -151,7 +151,7 @@ function InventoryDashboard() {
             </div>
             <div className="divide-y divide-slate-100">
               {posPurchaseOrders.map((order) => (
-                <div key={order.id} className="px-5 py-4">
+                <div key={order.id} className="list-row px-5 py-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-bold text-slate-950">{order.reference}</p>
@@ -174,7 +174,7 @@ function InventoryDashboard() {
             </div>
             <div className="divide-y divide-slate-100">
               {movements.slice(0, 5).map((movement: any) => (
-                <div key={movement.id} className="flex items-center justify-between gap-4 px-5 py-3.5">
+                <div key={movement.id} className="list-row flex items-center justify-between gap-4 px-5 py-3.5">
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex size-8 shrink-0 items-center justify-center rounded bg-slate-50 text-slate-500">
                       <ArrowRightLeft className="size-4" />

@@ -76,7 +76,7 @@ function CrmLeads() {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {visibleLeads.map((lead) => (
-                <tr key={lead.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-900">
+                <tr key={lead.id} className="list-row">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="flex size-8 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-200">

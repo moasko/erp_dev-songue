@@ -23,8 +23,8 @@
 
   code {
     @apply rounded px-1.5 py-0.5 font-mono text-sm;
-    background: rgba(0, 229, 153, 0.1);
-    color: #91ffd3;
+    background: rgba(255, 69, 0, 0.12);
+    color: #ffb199;
   }
 
   .using-mouse * {
@@ -41,22 +41,23 @@
   --app-panel: #0d1417;
   --app-panel-soft: #10191d;
   --app-panel-raised: #121d22;
-  --app-border: rgba(132, 255, 210, 0.12);
-  --app-border-strong: rgba(132, 255, 210, 0.22);
+  --app-border: rgba(255, 111, 59, 0.14);
+  --app-border-strong: rgba(255, 111, 59, 0.3);
   --app-text: #e8fff7;
   --app-muted: #8aa29b;
   --app-faint: #5f7770;
-  --app-green: #00e599;
-  --app-green-soft: rgba(0, 229, 153, 0.12);
-  --app-cyan: #66e3ff;
-  --app-glow-a: rgba(0, 229, 153, 0.13);
-  --app-glow-b: rgba(0, 150, 255, 0.09);
+  --app-accent: orangered;
+  --app-accent-hover: #e13d00;
+  --app-success: #00e599;
+  --app-success-soft: rgba(0, 229, 153, 0.12);
+  --app-glow-a: rgba(255, 69, 0, 0.15);
+  --app-glow-b: rgba(255, 123, 0, 0.08);
   --app-shadow-sm: 0 18px 60px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.03);
   --app-shadow-md: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 16px 50px rgba(0, 0, 0, 0.18);
   --app-shadow-lg: 0 22px 70px rgba(0, 0, 0, 0.26);
-  --app-primary-bg: #00e599;
-  --app-primary-bg-hover: #00c986;
-  --app-primary-text: #04100c;
+  --app-primary-bg: orangered;
+  --app-primary-bg-hover: #e13d00;
+  --app-primary-text: #ffffff;
   /* Status */
   --badge-good-bg: #f0fdf4;
   --badge-good-text: #15803d;
@@ -85,27 +86,28 @@ html.theme-light {
   --app-text: #020617;
   --app-muted: #475569;
   --app-faint: #94a3b8;
-  --app-green: #047857;
-  --app-green-soft: #d1fae5;
-  --app-cyan: #0369a1;
-  --app-glow-a: rgba(16, 185, 129, 0.1);
-  --app-glow-b: rgba(14, 165, 233, 0.08);
+  --app-accent: orangered;
+  --app-accent-hover: #e13d00;
+  --app-success: #047857;
+  --app-success-soft: #d1fae5;
+  --app-glow-a: rgba(255, 69, 0, 0.1);
+  --app-glow-b: rgba(255, 123, 0, 0.06);
   --app-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
   --app-shadow-md: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 22px rgba(15, 23, 42, 0.06);
   --app-shadow-lg: 0 10px 28px rgba(15, 23, 42, 0.1);
-  --app-primary-bg: #020617;
-  --app-primary-bg-hover: #1e293b;
+  --app-primary-bg: orangered;
+  --app-primary-bg-hover: #e13d00;
   --app-primary-text: #ffffff;
 }
 
 @layer base {
   ::selection {
-    background: rgba(0, 229, 153, 0.3);
+    background: rgba(255, 69, 0, 0.34);
     color: #ffffff;
   }
 
   * {
-    scrollbar-color: rgba(132, 255, 210, 0.28) transparent;
+    scrollbar-color: rgba(255, 111, 59, 0.34) transparent;
   }
 
   input,
@@ -121,6 +123,24 @@ html.theme-light {
 }
 
 @layer utilities {
+  .list-row {
+    transition:
+      background-color 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .list-row:hover {
+    background-color: var(--app-panel-raised) !important;
+    box-shadow: inset 3px 0 0 var(--app-accent);
+  }
+
+  .quote-row-selected {
+    background-color: var(--app-panel-raised) !important;
+    box-shadow:
+      inset 4px 0 0 var(--app-accent),
+      inset 0 0 0 1px var(--app-border-strong);
+  }
+
   .bg-white,
   .bg-slate-50,
   .bg-slate-50\/50 {
@@ -149,7 +169,7 @@ html.theme-light {
   }
 
   .bg-emerald-100 {
-    background-color: var(--app-green-soft) !important;
+    background-color: var(--app-success-soft) !important;
   }
 
   .text-white {
@@ -174,7 +194,13 @@ html.theme-light {
   }
 
   .text-emerald-700 {
-    color: var(--app-green) !important;
+    color: var(--app-success) !important;
+  }
+
+  .text-cyan-300,
+  .text-cyan-500,
+  .text-cyan-700 {
+    color: var(--app-accent) !important;
   }
 
   .border-slate-100,
@@ -198,7 +224,7 @@ html.theme-light {
 
   .focus\:border-slate-950:focus,
   .focus-within\:border-slate-950:focus-within {
-    border-color: var(--app-green) !important;
+    border-color: var(--app-accent) !important;
   }
 
   .hover\:bg-slate-50:hover,
@@ -224,8 +250,33 @@ html.theme-light {
 
   .to-slate-950,
   .to-slate-800 {
-    --tw-gradient-to: var(--app-cyan) var(--tw-gradient-to-position) !important;
+    --tw-gradient-to: var(--app-accent-hover) var(--tw-gradient-to-position) !important;
   }
+}
+
+html:not(.theme-light) .dark\:bg-cyan-400,
+html:not(.theme-light) .dark\:bg-cyan-500,
+html:not(.theme-light) .dark\:bg-emerald-400 {
+  background-color: var(--app-primary-bg) !important;
+  color: var(--app-primary-text) !important;
+}
+
+html:not(.theme-light) .dark\:hover\:bg-cyan-300:hover,
+html:not(.theme-light) .dark\:hover\:bg-cyan-400:hover,
+html:not(.theme-light) .dark\:hover\:bg-emerald-300:hover {
+  background-color: var(--app-primary-bg-hover) !important;
+}
+
+html:not(.theme-light) .dark\:border-cyan-400,
+html:not(.theme-light) .dark\:hover\:border-cyan-500:hover,
+html:not(.theme-light) .dark\:focus\:border-cyan-400:focus,
+html:not(.theme-light) .dark\:focus-within\:border-emerald-300:focus-within {
+  border-color: var(--app-accent) !important;
+}
+
+html:not(.theme-light) .dark\:text-cyan-300,
+html:not(.theme-light) .dark\:text-emerald-300 {
+  color: var(--app-accent) !important;
 }
 
 .neon-surface {
@@ -238,8 +289,8 @@ html.theme-light {
 
 .neon-grid {
   background-image:
-    linear-gradient(rgba(132, 255, 210, 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(132, 255, 210, 0.055) 1px, transparent 1px);
+    linear-gradient(rgba(255, 111, 59, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 111, 59, 0.06) 1px, transparent 1px);
   background-size: 44px 44px;
 }
 
@@ -275,7 +326,7 @@ html.theme-light {
 }
 
 .field-input:focus {
-  border-color: var(--app-green);
+  border-color: var(--app-accent);
 }
 
 .quote-print-area {

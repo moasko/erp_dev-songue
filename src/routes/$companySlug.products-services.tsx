@@ -542,7 +542,7 @@ function CatalogList({ items, categories, onRestock, onToggleStatus }: { items: 
               const stockState = getStockState(item)
 
               return (
-                <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                <tr key={item.id} className="list-row">
                   <td className="px-4 py-3">
                     <div className="flex size-10 items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-50">
                       {item.imageUrl ? <img src={item.imageUrl} alt="" className="size-full object-cover" /> : <ImageIcon className="size-4 text-slate-300" />}

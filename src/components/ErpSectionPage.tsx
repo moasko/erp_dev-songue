@@ -58,7 +58,7 @@ export function ErpSectionPage({ section }: { section: ErpSection }) {
               </thead>
               <tbody>
                 {section.records.map((record, index) => (
-                  <tr key={index} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                  <tr key={index} className="list-row border-t border-slate-100">
                     {columns.map((column) => (
                       <td key={column} className="px-4 py-3 font-medium text-slate-700">
                         {record[column]}

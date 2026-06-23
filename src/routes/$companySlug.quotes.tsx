@@ -8,6 +8,7 @@ import {
   Plus,
   Printer,
   Save,
+  Search,
   Send,
   Settings,
   Trash2,
@@ -24,6 +25,9 @@ export const Route = createFileRoute('/$companySlug/quotes')({
 })
 
 type Modal = 'quote' | 'settings' | null
+type QuoteStatus = 'Draft' | 'Sent' | 'Accepted' | 'Rejected' | 'Expired'
+type StatusFilter = QuoteStatus | 'All'
+type QuoteSort = 'updated' | 'validUntil' | 'amountDesc' | 'amountAsc'
 type QuoteLineForm = {
   itemId: string
   description: string
@@ -57,10 +61,33 @@ function QuotesPage() {
   const [selectedQuoteId, setSelectedQuoteId] = React.useState<string>(data.quotes[0]?.id ?? '')
   const [activeModal, setActiveModal] = React.useState<Modal>(null)
   const [message, setMessage] = React.useState('')
+  const [searchTerm, setSearchTerm] = React.useState('')
+  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>('All')
+  const [sortBy, setSortBy] = React.useState<QuoteSort>('updated')
 
   const selectedQuote = quotes.find((quote) => quote.id === selectedQuoteId) ?? quotes[0] ?? null
   const acceptedTotal = quotes.filter((quote) => quote.status === 'Accepted').reduce((sum, quote) => sum + quote.totalCents, 0)
   const pendingTotal = quotes.filter((quote) => ['Draft', 'Sent'].includes(quote.status)).reduce((sum, quote) => sum + quote.totalCents, 0)
+  const filteredQuotes = React.useMemo(() => {
+    const query = searchTerm.trim().toLowerCase()
+    return quotes
+      .filter((quote) => {
+        const matchesStatus = statusFilter === 'All' || quote.status === statusFilter
+        const searchable = [
+          quote.reference,
+          quote.customer?.name,
+          quote.customer?.email,
+          quote.title,
+        ].filter(Boolean).join(' ').toLowerCase()
+        return matchesStatus && (!query || searchable.includes(query))
+      })
+      .sort((first, second) => {
+        if (sortBy === 'validUntil') return new Date(first.validUntil).getTime() - new Date(second.validUntil).getTime()
+        if (sortBy === 'amountDesc') return second.totalCents - first.totalCents
+        if (sortBy === 'amountAsc') return first.totalCents - second.totalCents
+        return new Date(second.updatedAt).getTime() - new Date(first.updatedAt).getTime()
+      })
+  }, [quotes, searchTerm, sortBy, statusFilter])
 
   async function refresh() {
     const nextData = await getQuoteData({ data: { companySlug } })
@@ -70,7 +97,11 @@ function QuotesPage() {
     await router.invalidate()
   }
 
-  async function changeStatus(quoteId: string, status: 'Draft' | 'Sent' | 'Accepted' | 'Rejected' | 'Expired') {
+  async function changeStatus(quoteId: string, status: QuoteStatus) {
+    const quote = quotes.find((candidate) => candidate.id === quoteId)
+    if (status === 'Accepted' && quote && !window.confirm(`Marquer le devis ${quote.reference} comme accepte ?`)) {
+      return
+    }
     const updated = await updateQuoteStatus({ data: { companySlug, quoteId, status } })
     setQuotes((current) => current.map((quote) => quote.id === updated.id ? updated : quote))
     setMessage(`Devis ${updated.reference} marque: ${statusLabels[status]}.`)
@@ -115,55 +146,97 @@ function QuotesPage() {
         <section className="no-print overflow-hidden rounded border border-slate-200 bg-white">
           <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
             <h2 className="font-bold text-slate-950">Gestion des devis</h2>
-            <span className="text-xs font-semibold text-slate-500">{quotes.length} document{quotes.length > 1 ? 's' : ''}</span>
+            <span className="text-xs font-semibold text-slate-500">{filteredQuotes.length}/{quotes.length} document{quotes.length > 1 ? 's' : ''}</span>
           </div>
           {quotes.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[780px] text-left text-sm">
-                <thead className="bg-slate-50 text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3 font-semibold">Reference</th>
-                    <th className="px-4 py-3 font-semibold">Client</th>
-                    <th className="px-4 py-3 font-semibold">Objet</th>
-                    <th className="px-4 py-3 text-right font-semibold">Montant</th>
-                    <th className="px-4 py-3 text-center font-semibold">Statut</th>
-                    <th className="px-4 py-3 text-right font-semibold">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {quotes.map((quote) => (
-                    <tr key={quote.id} className={quote.id === selectedQuote?.id ? 'bg-slate-50' : 'hover:bg-slate-50'}>
-                      <td className="px-4 py-3">
-                        <button onClick={() => setSelectedQuoteId(quote.id)} className="font-bold text-slate-950 hover:underline">
-                          {quote.reference}
-                        </button>
-                        <p className="mt-0.5 text-xs text-slate-500">Valide jusqu'au {formatDate(quote.validUntil)}</p>
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">{quote.customer?.name ?? 'Client libre'}</td>
-                      <td className="px-4 py-3 text-slate-700">{quote.title}</td>
-                      <td className="px-4 py-3 text-right font-bold text-slate-950">{formatMoney(quote.totalCents)}</td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`inline-flex rounded px-2 py-1 text-xs font-bold ${statusClasses[quote.status] ?? statusClasses.Draft}`}>
-                          {statusLabels[quote.status] ?? quote.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="inline-flex gap-2">
-                          <button onClick={() => setSelectedQuoteId(quote.id)} className="rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                            Voir
-                          </button>
-                          <button onClick={() => changeStatus(quote.id, 'Sent')} className="rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                            Envoyer
-                          </button>
-                          <button onClick={() => changeStatus(quote.id, 'Accepted')} className="rounded bg-slate-950 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800">
-                            Accepter
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div>
+              <div className="grid gap-3 border-b border-slate-100 p-4 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+                <label className="relative block">
+                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder="Rechercher reference, client ou objet..."
+                    className="field-input pl-9"
+                  />
+                </label>
+                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)} className="field-input">
+                  <option value="All">Tous les statuts</option>
+                  {Object.entries(statusLabels).map(([status, label]) => <option key={status} value={status}>{label}</option>)}
+                </select>
+                <select value={sortBy} onChange={(event) => setSortBy(event.target.value as QuoteSort)} className="field-input">
+                  <option value="updated">Derniere activite</option>
+                  <option value="validUntil">Validite proche</option>
+                  <option value="amountDesc">Montant decroissant</option>
+                  <option value="amountAsc">Montant croissant</option>
+                </select>
+              </div>
+
+              {filteredQuotes.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px] text-left text-sm">
+                    <thead className="bg-slate-50 text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Reference</th>
+                        <th className="px-4 py-3 font-semibold">Client</th>
+                        <th className="px-4 py-3 font-semibold">Objet</th>
+                        <th className="px-4 py-3 text-right font-semibold">Montant</th>
+                        <th className="px-4 py-3 text-center font-semibold">Statut</th>
+                        <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredQuotes.map((quote) => (
+                        <tr key={quote.id} className={quote.id === selectedQuote?.id ? 'quote-row-selected' : 'list-row'}>
+                          <td className="px-4 py-3">
+                            <button onClick={() => setSelectedQuoteId(quote.id)} className="font-bold text-slate-950 hover:underline">
+                              {quote.reference}
+                            </button>
+                            <p className="mt-0.5 text-xs text-slate-500">Valide jusqu'au {formatDate(quote.validUntil)}</p>
+                          </td>
+                          <td className="px-4 py-3 text-slate-700">{quote.customer?.name ?? 'Client libre'}</td>
+                          <td className="px-4 py-3 text-slate-700">{quote.title}</td>
+                          <td className="px-4 py-3 text-right font-bold text-slate-950">{formatMoney(quote.totalCents)}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`inline-flex rounded px-2 py-1 text-xs font-bold ${statusClasses[quote.status] ?? statusClasses.Draft}`}>
+                              {statusLabels[quote.status] ?? quote.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="inline-flex flex-wrap justify-end gap-2">
+                              <button
+                                onClick={() => setSelectedQuoteId(quote.id)}
+                                className={`rounded px-3 py-1.5 text-xs font-bold ${
+                                  quote.id === selectedQuote?.id
+                                    ? 'border border-slate-950 bg-slate-950 text-white'
+                                    : 'border border-slate-300 text-slate-700 hover:bg-slate-50'
+                                }`}
+                              >
+                                {quote.id === selectedQuote?.id ? 'Ouvert' : 'Voir apercu'}
+                              </button>
+                              <select
+                                value={quote.status}
+                                onChange={(event) => void changeStatus(quote.id, event.target.value as QuoteStatus)}
+                                className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-bold text-slate-700"
+                                aria-label={`Changer le statut de ${quote.reference}`}
+                              >
+                                {Object.entries(statusLabels).map(([status, label]) => <option key={status} value={status}>{label}</option>)}
+                              </select>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="px-5 py-10 text-center">
+                  <p className="font-semibold text-slate-800">Aucun devis ne correspond aux filtres.</p>
+                  <button onClick={() => { setSearchTerm(''); setStatusFilter('All') }} className="mt-3 rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                    Reinitialiser la recherche
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="px-5 py-12 text-center">
@@ -183,7 +256,7 @@ function QuotesPage() {
             <>
               <div className="no-print mb-4 flex items-center justify-between gap-2">
                 <div>
-                  <h2 className="font-bold text-slate-950">Apercu impression</h2>
+                  <h2 className="font-light text-slate-950">Apercu impression de devis</h2>
                   <p className="text-xs text-slate-500">{selectedQuote.reference}</p>
                 </div>
                 <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded bg-slate-950 px-3 py-2 text-sm font-semibold text-white">
@@ -248,7 +321,7 @@ function QuoteModal({
   onClose: () => void
   onSubmit: (payload: any) => Promise<void>
 }) {
-  const [customerId, setCustomerId] = React.useState(customers[0]?.id ?? '')
+  const [customerId, setCustomerId] = React.useState('')
   const [customerName, setCustomerName] = React.useState('')
   const [customerEmail, setCustomerEmail] = React.useState('')
   const [title, setTitle] = React.useState('Proposition commerciale')
@@ -321,7 +394,7 @@ function QuoteModal({
             <label className="block">
               <span className="field-label">Client existant</span>
               <select value={customerId} onChange={(event) => setCustomerId(event.target.value)} className="field-input">
-                <option value="">Nouveau client</option>
+                <option value="">Nouveau client ou a renseigner</option>
                 {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
               </select>
             </label>
@@ -345,19 +418,47 @@ function QuoteModal({
                 Ligne
               </button>
             </div>
+            <div className="hidden grid-cols-[1fr_1.4fr_80px_110px_90px_36px] gap-2 border-b border-slate-100 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400 md:grid">
+              <span>Article</span>
+              <span>Description</span>
+              <span className="text-right">Qte</span>
+              <span className="text-right">PU</span>
+              <span className="text-right">Total</span>
+              <span />
+            </div>
             <div className="space-y-3 p-4">
               {lines.map((line, index) => (
-                <div key={index} className="grid gap-2 rounded border border-slate-100 p-3 md:grid-cols-[1fr_1.4fr_80px_110px_36px]">
-                  <select value={line.itemId} onChange={(event) => selectItem(index, event.target.value)} className="field-input">
-                    <option value="">Ligne libre</option>
-                    {items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                  </select>
-                  <input value={line.description} onChange={(event) => setLines((current) => current.map((candidate, lineIndex) => lineIndex === index ? { ...candidate, description: event.target.value } : candidate))} placeholder="Description" className="field-input" />
-                  <input value={line.quantity} onChange={(event) => setLines((current) => current.map((candidate, lineIndex) => lineIndex === index ? { ...candidate, quantity: event.target.value } : candidate))} type="number" min="1" className="field-input" />
-                  <input value={line.unitPrice} onChange={(event) => setLines((current) => current.map((candidate, lineIndex) => lineIndex === index ? { ...candidate, unitPrice: event.target.value } : candidate))} type="number" min="0" className="field-input" />
-                  <button type="button" onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))} disabled={lines.length === 1} className="inline-flex size-10 items-center justify-center rounded border border-slate-200 text-slate-500 disabled:opacity-40">
-                    <Trash2 className="size-4" />
-                  </button>
+                <div key={index} className="grid gap-2 rounded border border-slate-100 p-3 md:grid-cols-[1fr_1.4fr_80px_110px_90px_36px]">
+                  <label>
+                    <span className="field-label md:hidden">Article</span>
+                    <select value={line.itemId} onChange={(event) => selectItem(index, event.target.value)} className="field-input">
+                      <option value="">Ligne libre</option>
+                      {items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span className="field-label md:hidden">Description</span>
+                    <input value={line.description} onChange={(event) => setLines((current) => current.map((candidate, lineIndex) => lineIndex === index ? { ...candidate, description: event.target.value } : candidate))} placeholder="Description" className="field-input" />
+                  </label>
+                  <label>
+                    <span className="field-label md:hidden">Qte</span>
+                    <input value={line.quantity} onChange={(event) => setLines((current) => current.map((candidate, lineIndex) => lineIndex === index ? { ...candidate, quantity: event.target.value } : candidate))} type="number" min="1" className="field-input text-right" />
+                  </label>
+                  <label>
+                    <span className="field-label md:hidden">PU</span>
+                    <input value={line.unitPrice} onChange={(event) => setLines((current) => current.map((candidate, lineIndex) => lineIndex === index ? { ...candidate, unitPrice: event.target.value } : candidate))} type="number" min="0" className="field-input text-right" />
+                  </label>
+                  <div>
+                    <span className="field-label md:hidden">Total</span>
+                    <div className="flex h-10 items-center justify-end rounded border border-slate-100 px-3 text-sm font-bold text-slate-950">
+                      {formatMoney(getNumber(line.quantity) * getNumber(line.unitPrice))}
+                    </div>
+                  </div>
+                  <div className="flex items-end">
+                    <button type="button" onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))} disabled={lines.length === 1} className="inline-flex size-10 items-center justify-center rounded border border-slate-200 text-slate-500 disabled:opacity-40">
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -373,7 +474,7 @@ function QuoteModal({
           </label>
         </div>
 
-        <aside className="rounded border border-slate-200 bg-slate-50 p-4">
+        <aside className="self-start rounded border border-slate-200 bg-slate-50 p-4 lg:sticky lg:top-4">
           <h3 className="font-bold text-slate-950">Total</h3>
           <AmountRow label="Sous-total" value={subtotal} />
           <AmountRow label="Remise" value={-discount} />
@@ -410,21 +511,42 @@ function SettingsModal({ settings, companyName, onClose, onSubmit }: { settings:
     paymentTerms: settings.paymentTerms ?? '',
     accentColor: settings.accentColor ?? '#0f172a',
   })
+  const [error, setError] = React.useState('')
 
   function updateField(key: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [key]: value }))
+    setError('')
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (form.logoUrl.trim() && !isHttpUrl(form.logoUrl)) {
+      setError('Le logo doit etre une URL valide commençant par http:// ou https://.')
+      return
+    }
+    if (!isHexColor(form.accentColor)) {
+      setError('La couleur doit etre au format hexadecimal, par exemple #0f172a.')
+      return
+    }
+    await onSubmit(form)
   }
 
   return (
     <Modal title="Personnalisation du devis" onClose={onClose}>
-      <form onSubmit={(event) => { event.preventDefault(); void onSubmit(form) }} className="space-y-4">
+      <form onSubmit={(event) => { void handleSubmit(event) }} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField label="Nom legal" value={form.legalName} onChange={(value) => updateField('legalName', value)} />
           <TextField label="Logo URL" value={form.logoUrl} onChange={(value) => updateField('logoUrl', value)} placeholder="https://..." />
           <TextField label="Telephone" value={form.phone} onChange={(value) => updateField('phone', value)} />
           <TextField label="Email" value={form.email} onChange={(value) => updateField('email', value)} type="email" />
           <TextField label="NIF / RCCM" value={form.taxId} onChange={(value) => updateField('taxId', value)} />
-          <TextField label="Couleur" value={form.accentColor} onChange={(value) => updateField('accentColor', value)} type="color" />
+          <label className="block">
+            <span className="field-label">Couleur</span>
+            <div className="flex gap-2">
+              <input value={form.accentColor} onChange={(event) => updateField('accentColor', event.target.value)} type="color" className="h-10 w-12 rounded border border-slate-300 bg-white p-1" />
+              <input value={form.accentColor} onChange={(event) => updateField('accentColor', event.target.value)} pattern="^#[0-9a-fA-F]{6}$" className="field-input" />
+            </div>
+          </label>
         </div>
         <label className="block">
           <span className="field-label">Adresse</span>
@@ -438,6 +560,7 @@ function SettingsModal({ settings, companyName, onClose, onSubmit }: { settings:
           <span className="field-label">Pied de page</span>
           <textarea value={form.footerNote} onChange={(event) => updateField('footerNote', event.target.value)} rows={2} className="field-input" />
         </label>
+        {error ? <p className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</p> : null}
         <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
           <button type="button" onClick={onClose} className="inline-flex items-center gap-2 rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">
             <X className="size-4" />
@@ -598,6 +721,19 @@ function formatDate(value: string | Date) {
 function getNumber(value: string) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function isHexColor(value: string) {
+  return /^#[0-9a-fA-F]{6}$/.test(value)
+}
+
+function isHttpUrl(value: string) {
+  try {
+    const url = new URL(value)
+    return ['http:', 'https:'].includes(url.protocol)
+  } catch {
+    return false
+  }
 }
 
 function defaultValidUntil() {

@@ -21,7 +21,7 @@ function InvoicesPage() {
       <section className="neon-surface overflow-hidden rounded">
         <div className="divide-y divide-slate-100">
           {invoices.length ? invoices.map((invoice: any) => (
-            <div key={invoice.id} className="flex items-center justify-between gap-4 px-5 py-4">
+            <div key={invoice.id} className="list-row flex items-center justify-between gap-4 px-5 py-4">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex size-9 shrink-0 items-center justify-center rounded bg-slate-100 text-slate-600">
                   <ReceiptText className="size-4" />

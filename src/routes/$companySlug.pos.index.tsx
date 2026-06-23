@@ -52,7 +52,7 @@ function PosDashboard() {
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {recentTickets.length > 0 ? recentTickets.map((ticket: any) => (
-              <div key={ticket.id} className="flex items-center justify-between gap-4 px-5 py-4">
+              <div key={ticket.id} className="list-row flex items-center justify-between gap-4 px-5 py-4">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold text-slate-950 dark:text-white">{ticket.reference}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">{new Date(ticket.date).toLocaleString('fr-FR')} - {paymentLabel(ticket.account?.name)}</p>
@@ -70,7 +70,7 @@ function PosDashboard() {
           </div>
           <div className="space-y-3 p-5">
             {lowStock.length > 0 ? lowStock.slice(0, 5).map((item: any) => (
-              <div key={item.id} className="flex items-center justify-between gap-4 rounded border border-slate-200 px-3 py-3 dark:border-slate-800">
+              <div key={item.id} className="list-row flex items-center justify-between gap-4 rounded border border-slate-200 px-3 py-3 dark:border-slate-800">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold text-slate-950 dark:text-white">{item.name}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">{item.sku}</p>

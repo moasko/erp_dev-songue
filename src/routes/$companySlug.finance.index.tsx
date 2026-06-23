@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { Activity, ArrowDownRight, ArrowUpRight, Banknote, Check, CreditCard, Landmark, Plus, ReceiptText, X } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
+import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 import { getFinanceData } from '~/server/dataFetchers'
 import { createFinanceTransaction } from '~/server/operations'
 import { useCompany } from '~/context/CompanyContext'
@@ -18,12 +19,16 @@ function FinanceDashboard() {
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [expenseForm, setExpenseForm] = useState({ description: '', amount: '', category: 'Charges', accountId: accounts[0]?.id ?? '' })
+  const [datePreset, setDatePreset] = useState<DatePreset>('month')
+  const [startDate, setStartDate] = useState(todayInputValue())
+  const [endDate, setEndDate] = useState(todayInputValue())
 
   const totalBalance = accounts.reduce((sum: number, acc: any) => sum + acc.balance, 0)
-  const totalIncome = transactions.filter((tx: any) => tx.type === 'Income').reduce((sum: number, tx: any) => sum + tx.amount, 0)
-  const totalExpense = transactions.filter((tx: any) => tx.type === 'Expense').reduce((sum: number, tx: any) => sum + tx.amount, 0)
+  const periodTransactions = transactions.filter((tx: any) => matchesDatePreset(tx.date, datePreset, startDate, endDate))
+  const totalIncome = periodTransactions.filter((tx: any) => tx.type === 'Income').reduce((sum: number, tx: any) => sum + tx.amount, 0)
+  const totalExpense = periodTransactions.filter((tx: any) => tx.type === 'Expense').reduce((sum: number, tx: any) => sum + tx.amount, 0)
   const profit = totalIncome - totalExpense
-  const pending = transactions.filter((tx: any) => tx.status === 'Pending')
+  const pending = periodTransactions.filter((tx: any) => tx.status === 'Pending')
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -40,10 +45,21 @@ function FinanceDashboard() {
 
       {message ? <div className="mb-6 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{message}</div> : null}
 
+      <div className="mb-6">
+        <DateRangeFilter
+          preset={datePreset}
+          startDate={startDate}
+          endDate={endDate}
+          onPresetChange={setDatePreset}
+          onStartDateChange={setStartDate}
+          onEndDateChange={setEndDate}
+        />
+      </div>
+
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
         <StatCard title="Solde disponible" value={formatMoney(totalBalance)} icon={Banknote} detail="Caisse + comptes" />
-        <StatCard title="Entrees du mois" value={formatMoney(totalIncome)} icon={ArrowUpRight} detail="Ventes et paiements" />
-        <StatCard title="Depenses du mois" value={formatMoney(totalExpense)} icon={ArrowDownRight} detail="Achats et charges" alert={totalExpense > totalIncome} />
+        <StatCard title="Entrees periode" value={formatMoney(totalIncome)} icon={ArrowUpRight} detail="Ventes et paiements" />
+        <StatCard title="Depenses periode" value={formatMoney(totalExpense)} icon={ArrowDownRight} detail="Achats et charges" alert={totalExpense > totalIncome} />
         <StatCard title="Benefice estime" value={formatSignedMoney(Math.abs(profit), profit >= 0 ? '+' : '-')} icon={Activity} detail={`${pending.length} a verifier`} alert={profit < 0} />
       </div>
 
@@ -55,7 +71,7 @@ function FinanceDashboard() {
           </div>
           <div className="divide-y divide-slate-100">
             {accounts.map((account: any) => (
-              <div key={account.id} className="flex items-center justify-between gap-4 px-5 py-4">
+              <div key={account.id} className="list-row flex items-center justify-between gap-4 px-5 py-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex size-10 shrink-0 items-center justify-center rounded bg-slate-50 text-slate-600">
                     {account.type === 'Checking' || account.type === 'Savings' ? <Landmark className="size-5" /> : account.type === 'Cash' ? <Banknote className="size-5" /> : <CreditCard className="size-5" />}
@@ -82,8 +98,8 @@ function FinanceDashboard() {
             </Link>
           </div>
           <div className="divide-y divide-slate-100">
-            {transactions.slice(0, 6).map((tx: any) => (
-              <div key={tx.id} className="flex items-center justify-between gap-4 px-5 py-3.5">
+            {periodTransactions.slice(0, 6).map((tx: any) => (
+              <div key={tx.id} className="list-row flex items-center justify-between gap-4 px-5 py-3.5">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex size-9 shrink-0 items-center justify-center rounded bg-slate-50 text-slate-600">
                     {tx.type === 'Income' ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}

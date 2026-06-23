@@ -38,7 +38,7 @@ function HrDashboard() {
           <h2 className="text-lg font-bold text-slate-950 mb-6">Répartition par Département</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {departments.map((dept: any) => (
-              <div key={dept.id} className="p-4 rounded border border-slate-100 bg-slate-50 flex flex-col justify-between h-24">
+              <div key={dept.id} className="list-row p-4 rounded border border-slate-100 bg-slate-50 flex flex-col justify-between h-24">
                 <span className="text-sm font-semibold text-slate-700">{dept.id}</span>
                 <div className="flex items-end justify-between">
                   <span className="text-2xl font-bold text-slate-950">{dept.count}</span>
@@ -53,7 +53,7 @@ function HrDashboard() {
           <h2 className="text-lg font-bold text-slate-950 mb-6">Mouvements Récents</h2>
           <div className="flex-1 space-y-0 divide-y divide-slate-100">
             {employees.slice(0, 4).map((emp: any) => (
-              <div key={emp.id} className="py-3 flex items-center justify-between">
+              <div key={emp.id} className="list-row -mx-3 flex items-center justify-between px-3 py-3">
                 <div className="flex items-center gap-3">
                   <div className="size-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs">
                     {emp.firstName.charAt(0)}{emp.lastName.charAt(0)}

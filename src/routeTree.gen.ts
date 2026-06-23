@@ -12,10 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsersRouteImport } from './routes/users'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as RegisterRouteImport } from './routes/register'
+import { Route as PrivencyRouteImport } from './routes/privency'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as CustomScriptDotjsRouteImport } from './routes/customScript[.]js'
 import { Route as CompanySlugRouteImport } from './routes/$companySlug'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CompanySlugUsersRouteImport } from './routes/$companySlug.users'
 import { Route as CompanySlugSettingsRouteImport } from './routes/$companySlug.settings'
 import { Route as CompanySlugSalesRouteImport } from './routes/$companySlug.sales'
 import { Route as CompanySlugReportsRouteImport } from './routes/$companySlug.reports'
@@ -89,6 +92,16 @@ const RegisterRoute = RegisterRouteImport.update({
   path: '/register',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivencyRoute = PrivencyRouteImport.update({
+  id: '/privency',
+  path: '/privency',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -108,6 +121,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const CompanySlugUsersRoute = CompanySlugUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => CompanySlugRoute,
 } as any)
 const CompanySlugSettingsRoute = CompanySlugSettingsRouteImport.update({
   id: '/settings',
@@ -422,6 +440,8 @@ export interface FileRoutesByFullPath {
   '/$companySlug': typeof CompanySlugRouteWithChildren
   '/customScript.js': typeof CustomScriptDotjsRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/privency': typeof PrivencyRoute
   '/register': typeof RegisterRoute
   '/setup': typeof SetupRoute
   '/users': typeof UsersRoute
@@ -441,6 +461,7 @@ export interface FileRoutesByFullPath {
   '/$companySlug/reports': typeof CompanySlugReportsRoute
   '/$companySlug/sales': typeof CompanySlugSalesRouteWithChildren
   '/$companySlug/settings': typeof CompanySlugSettingsRoute
+  '/$companySlug/users': typeof CompanySlugUsersRoute
   '/$companySlug/accounting/chart-of-accounts': typeof CompanySlugAccountingChartOfAccountsRoute
   '/$companySlug/accounting/ledger': typeof CompanySlugAccountingLedgerRoute
   '/$companySlug/accounting/profit-loss': typeof CompanySlugAccountingProfitLossRoute
@@ -488,6 +509,8 @@ export interface FileRoutesByTo {
   '/$companySlug': typeof CompanySlugRouteWithChildren
   '/customScript.js': typeof CustomScriptDotjsRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/privency': typeof PrivencyRoute
   '/register': typeof RegisterRoute
   '/setup': typeof SetupRoute
   '/users': typeof UsersRoute
@@ -499,6 +522,7 @@ export interface FileRoutesByTo {
   '/$companySlug/quotes': typeof CompanySlugQuotesRoute
   '/$companySlug/reports': typeof CompanySlugReportsRoute
   '/$companySlug/settings': typeof CompanySlugSettingsRoute
+  '/$companySlug/users': typeof CompanySlugUsersRoute
   '/$companySlug/accounting/chart-of-accounts': typeof CompanySlugAccountingChartOfAccountsRoute
   '/$companySlug/accounting/ledger': typeof CompanySlugAccountingLedgerRoute
   '/$companySlug/accounting/profit-loss': typeof CompanySlugAccountingProfitLossRoute
@@ -547,6 +571,8 @@ export interface FileRoutesById {
   '/$companySlug': typeof CompanySlugRouteWithChildren
   '/customScript.js': typeof CustomScriptDotjsRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/privency': typeof PrivencyRoute
   '/register': typeof RegisterRoute
   '/setup': typeof SetupRoute
   '/users': typeof UsersRoute
@@ -566,6 +592,7 @@ export interface FileRoutesById {
   '/$companySlug/reports': typeof CompanySlugReportsRoute
   '/$companySlug/sales': typeof CompanySlugSalesRouteWithChildren
   '/$companySlug/settings': typeof CompanySlugSettingsRoute
+  '/$companySlug/users': typeof CompanySlugUsersRoute
   '/$companySlug/accounting/chart-of-accounts': typeof CompanySlugAccountingChartOfAccountsRoute
   '/$companySlug/accounting/ledger': typeof CompanySlugAccountingLedgerRoute
   '/$companySlug/accounting/profit-loss': typeof CompanySlugAccountingProfitLossRoute
@@ -615,6 +642,8 @@ export interface FileRouteTypes {
     | '/$companySlug'
     | '/customScript.js'
     | '/login'
+    | '/privacy'
+    | '/privency'
     | '/register'
     | '/setup'
     | '/users'
@@ -634,6 +663,7 @@ export interface FileRouteTypes {
     | '/$companySlug/reports'
     | '/$companySlug/sales'
     | '/$companySlug/settings'
+    | '/$companySlug/users'
     | '/$companySlug/accounting/chart-of-accounts'
     | '/$companySlug/accounting/ledger'
     | '/$companySlug/accounting/profit-loss'
@@ -681,6 +711,8 @@ export interface FileRouteTypes {
     | '/$companySlug'
     | '/customScript.js'
     | '/login'
+    | '/privacy'
+    | '/privency'
     | '/register'
     | '/setup'
     | '/users'
@@ -692,6 +724,7 @@ export interface FileRouteTypes {
     | '/$companySlug/quotes'
     | '/$companySlug/reports'
     | '/$companySlug/settings'
+    | '/$companySlug/users'
     | '/$companySlug/accounting/chart-of-accounts'
     | '/$companySlug/accounting/ledger'
     | '/$companySlug/accounting/profit-loss'
@@ -739,6 +772,8 @@ export interface FileRouteTypes {
     | '/$companySlug'
     | '/customScript.js'
     | '/login'
+    | '/privacy'
+    | '/privency'
     | '/register'
     | '/setup'
     | '/users'
@@ -758,6 +793,7 @@ export interface FileRouteTypes {
     | '/$companySlug/reports'
     | '/$companySlug/sales'
     | '/$companySlug/settings'
+    | '/$companySlug/users'
     | '/$companySlug/accounting/chart-of-accounts'
     | '/$companySlug/accounting/ledger'
     | '/$companySlug/accounting/profit-loss'
@@ -806,6 +842,8 @@ export interface RootRouteChildren {
   CompanySlugRoute: typeof CompanySlugRouteWithChildren
   CustomScriptDotjsRoute: typeof CustomScriptDotjsRoute
   LoginRoute: typeof LoginRoute
+  PrivacyRoute: typeof PrivacyRoute
+  PrivencyRoute: typeof PrivencyRoute
   RegisterRoute: typeof RegisterRoute
   SetupRoute: typeof SetupRoute
   UsersRoute: typeof UsersRoute
@@ -832,6 +870,20 @@ declare module '@tanstack/react-router' {
       path: '/register'
       fullPath: '/register'
       preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privency': {
+      id: '/privency'
+      path: '/privency'
+      fullPath: '/privency'
+      preLoaderRoute: typeof PrivencyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -861,6 +913,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/$companySlug/users': {
+      id: '/$companySlug/users'
+      path: '/users'
+      fullPath: '/$companySlug/users'
+      preLoaderRoute: typeof CompanySlugUsersRouteImport
+      parentRoute: typeof CompanySlugRoute
     }
     '/$companySlug/settings': {
       id: '/$companySlug/settings'
@@ -1443,6 +1502,7 @@ interface CompanySlugRouteChildren {
   CompanySlugReportsRoute: typeof CompanySlugReportsRoute
   CompanySlugSalesRoute: typeof CompanySlugSalesRouteWithChildren
   CompanySlugSettingsRoute: typeof CompanySlugSettingsRoute
+  CompanySlugUsersRoute: typeof CompanySlugUsersRoute
 }
 
 const CompanySlugRouteChildren: CompanySlugRouteChildren = {
@@ -1462,6 +1522,7 @@ const CompanySlugRouteChildren: CompanySlugRouteChildren = {
   CompanySlugReportsRoute: CompanySlugReportsRoute,
   CompanySlugSalesRoute: CompanySlugSalesRouteWithChildren,
   CompanySlugSettingsRoute: CompanySlugSettingsRoute,
+  CompanySlugUsersRoute: CompanySlugUsersRoute,
 }
 
 const CompanySlugRouteWithChildren = CompanySlugRoute._addFileChildren(
@@ -1473,6 +1534,8 @@ const rootRouteChildren: RootRouteChildren = {
   CompanySlugRoute: CompanySlugRouteWithChildren,
   CustomScriptDotjsRoute: CustomScriptDotjsRoute,
   LoginRoute: LoginRoute,
+  PrivacyRoute: PrivacyRoute,
+  PrivencyRoute: PrivencyRoute,
   RegisterRoute: RegisterRoute,
   SetupRoute: SetupRoute,
   UsersRoute: UsersRoute,

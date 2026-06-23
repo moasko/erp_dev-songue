@@ -9,13 +9,8 @@ export const getDashboardData = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     const { companySlug } = data
 
-    const company = await prisma.company.findUnique({
-      where: { slug: companySlug },
-    })
-
-    if (!company) {
-      throw new Error('Company not found')
-    }
+    const { requireCompanyAccess } = await import('./access')
+    const { company } = await requireCompanyAccess(companySlug)
 
     const [accounts, warehouses, transactions, deals, products, movements, employees] =
       await Promise.all([

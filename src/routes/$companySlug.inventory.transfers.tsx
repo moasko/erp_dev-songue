@@ -55,7 +55,7 @@ function InventoryTransfers() {
                 const dest = inventoryWarehouses.find(w => w.id === mov.destinationWarehouseId)?.name || 'Client'
                 
                 return (
-                  <tr key={mov.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={mov.id} className="list-row">
                     <td className="px-4 py-3">
                       <p className="font-semibold text-slate-900">{mov.reference}</p>
                       <p className="text-xs text-slate-500 mt-0.5">{new Date(mov.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</p>

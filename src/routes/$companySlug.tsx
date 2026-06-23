@@ -29,6 +29,7 @@ import {
 } from 'lucide-react'
 import * as React from 'react'
 import { CompanyProvider, useCompany } from '~/context/CompanyContext'
+import { GlobalSearch } from '~/components/GlobalSearch'
 import { getCompanyAuthState, logout, createCompany } from '~/server/auth'
 
 export const Route = createFileRoute('/$companySlug')({
@@ -233,27 +234,19 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
   return (
     <div className="neon-grid min-h-screen text-slate-950">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-[17rem] border-r border-slate-200 bg-white lg:flex lg:flex-col">
-        <div className="flex h-14 items-center gap-3 border-b border-slate-200 px-4">
-          <span className="grid size-8 place-items-center rounded bg-gradient-to-br from-slate-800 to-slate-950 text-xs font-bold text-white shadow-[0_0_24px_rgba(0,229,153,0.22)]">
-            GP
-          </span>
-          <span>
-            <span className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Application
-            </span>
-            <span className="block text-sm font-bold text-slate-950">Gestion PME</span>
-          </span>
-        </div>
-
-        <div className="relative border-b border-slate-200 p-3" ref={dropdownRef}>
+        <div className="relative border-b border-slate-200 px-3 py-2" ref={dropdownRef}>
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className={`group flex w-full items-center justify-between rounded px-2 py-1.5 transition-colors hover:bg-slate-50 ${isDropdownOpen ? 'bg-slate-50' : ''}`}
+            className={`group flex h-10 w-full items-center justify-between rounded px-2 transition-colors hover:bg-slate-50 ${isDropdownOpen ? 'bg-slate-50' : ''}`}
           >
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className={`flex size-7 shrink-0 items-center justify-center rounded font-bold text-white ${activeCompany.color}`}>
-                {activeCompany.initial}
-              </div>
+              <CompanyLogoMark
+                className="flex size-7"
+                fallbackClassName={activeCompany.color}
+                fallbackText={activeCompany.initial}
+                label={activeCompany.name}
+                logoUrl={activeCompany.logoUrl}
+              />
               <div className="flex min-w-0 flex-col items-start">
                 <span className="block max-w-40 truncate text-sm font-bold text-slate-950">{activeCompany.name}</span>
                 <span className="block max-w-40 truncate text-[10px] font-semibold uppercase tracking-wider text-slate-500">{activeCompany.group}</span>
@@ -277,9 +270,13 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
                   className="flex w-full items-center justify-between px-3 py-2 text-sm transition-colors hover:bg-slate-50"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex size-6 shrink-0 items-center justify-center rounded bg-slate-950 text-[10px] font-bold text-white">
-                      {company.name.slice(0, 2).toUpperCase()}
-                    </div>
+                    <CompanyLogoMark
+                      className="flex size-6"
+                      fallbackClassName="bg-slate-950"
+                      fallbackText={company.name.slice(0, 2).toUpperCase()}
+                      label={company.name}
+                      logoUrl={company.logoUrl}
+                    />
                     <span className={`truncate font-semibold ${company.slug === companySlug ? 'text-slate-950' : 'text-slate-700'}`}>
                       {company.name}
                     </span>
@@ -353,16 +350,8 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
       <div className="lg:pl-[17rem]">
         <header className="app-header sticky top-0 z-10 border-b shadow-sm backdrop-blur-xl">
           <div className="flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className={`hidden size-9 shrink-0 items-center justify-center rounded font-bold text-white sm:flex ${activeCompany.color}`}>
-                {activeCompany.initial}
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  Espace de travail
-                </p>
-                <h1 className="truncate text-sm font-bold text-slate-950">{activeCompany.name}</h1>
-              </div>
+            <div className="hidden min-w-0 flex-1 justify-center px-4 md:flex">
+              <GlobalSearch companySlug={companySlug} />
             </div>
             <div className="flex items-center gap-2">
               <ThemeSwitch theme={theme} onToggle={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} />
@@ -390,11 +379,40 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
               </Link>
             ))}
           </div>
+          <div className="border-t border-slate-100 px-4 py-2 md:hidden">
+            <GlobalSearch companySlug={companySlug} />
+          </div>
         </header>
         <main>{children}</main>
       </div>
       <CreateCompanyModal isOpen={showCreateCompanyModal} onClose={() => setShowCreateCompanyModal(false)} />
     </div>
+  )
+}
+
+function CompanyLogoMark({
+  className,
+  fallbackClassName,
+  fallbackText,
+  label,
+  logoUrl,
+}: {
+  className: string
+  fallbackClassName: string
+  fallbackText: string
+  label: string
+  logoUrl?: string | null
+}) {
+  return (
+    <span className={`shrink-0 items-center justify-center overflow-hidden rounded border border-slate-200 bg-white ${className}`}>
+      {logoUrl ? (
+        <img src={logoUrl} alt={`Logo ${label}`} className="size-full object-contain p-0.5" />
+      ) : (
+        <span className={`flex size-full items-center justify-center text-[10px] font-bold text-white ${fallbackClassName}`}>
+          {fallbackText}
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -525,6 +543,14 @@ function CreateCompanyModal({
 }) {
   const [name, setName] = React.useState('')
   const [slug, setSlug] = React.useState('')
+  const [legalName, setLegalName] = React.useState('')
+  const [logoUrl, setLogoUrl] = React.useState('')
+  const [email, setEmail] = React.useState('')
+  const [phone, setPhone] = React.useState('')
+  const [address, setAddress] = React.useState('')
+  const [taxId, setTaxId] = React.useState('')
+  const [website, setWebsite] = React.useState('')
+  const [showMore, setShowMore] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
@@ -532,6 +558,14 @@ function CreateCompanyModal({
     if (isOpen) {
       setName('')
       setSlug('')
+      setLegalName('')
+      setLogoUrl('')
+      setEmail('')
+      setPhone('')
+      setAddress('')
+      setTaxId('')
+      setWebsite('')
+      setShowMore(false)
       setError(null)
     }
   }, [isOpen])
@@ -552,10 +586,32 @@ function CreateCompanyModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim() || !slug.trim()) return
+    const normalizedLogoUrl = normalizeOptionalUrl(logoUrl)
+    const normalizedWebsite = normalizeOptionalUrl(website)
+    if (!isOptionalHttpUrl(normalizedLogoUrl)) {
+      setError('Logo URL invalide. Exemple attendu: https://exemple.com/logo.png')
+      return
+    }
+    if (!isOptionalHttpUrl(normalizedWebsite)) {
+      setError('Site web invalide. Exemple attendu: https://exemple.com')
+      return
+    }
     setIsSubmitting(true)
     setError(null)
     try {
-      const res = await createCompany({ data: { name: name.trim(), slug: slug.trim() } })
+      const res = await createCompany({
+        data: {
+          name: name.trim(),
+          slug: slug.trim(),
+          legalName: legalName.trim(),
+          logoUrl: normalizedLogoUrl,
+          email: email.trim(),
+          phone: phone.trim(),
+          address: address.trim(),
+          taxId: taxId.trim(),
+          website: normalizedWebsite,
+        },
+      })
       if (res.ok && res.companySlug) {
         window.location.href = `/${res.companySlug}/dashboard`
       } else {
@@ -573,22 +629,118 @@ function CreateCompanyModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md rounded border border-slate-200 bg-white p-5">
-        <h2 className="text-lg font-bold text-slate-950">Ajouter une activité</h2>
-        <p className="mt-1 text-xs text-slate-500">Créez un espace séparé pour une boutique, agence ou succursale.</p>
+      <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded border border-slate-200 bg-white p-5">
+        <h2 className="text-lg font-bold text-slate-950">Creation rapide d'entreprise</h2>
+        <p className="mt-1 text-xs text-slate-500">Creez une entreprise avec son logo et ses informations principales.</p>
         
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">Nom</span>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={handleNameChange}
-              placeholder="Ex: Boutique Plateau"
-              className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
-            />
-          </label>
+          <div className="flex flex-col gap-4 sm:flex-row">
+            <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-50">
+              {isOptionalHttpUrl(normalizeOptionalUrl(logoUrl)) && normalizeOptionalUrl(logoUrl) ? (
+                <img src={normalizeOptionalUrl(logoUrl)} alt="Logo entreprise" className="size-full object-contain p-2" />
+              ) : (
+                <Building2 className="size-8 text-slate-300" />
+              )}
+            </div>
+            <div className="grid min-w-0 flex-1 gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">Nom commercial *</span>
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={handleNameChange}
+                  placeholder="Ex: Boutique Plateau"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">Raison sociale</span>
+                <input
+                  type="text"
+                  value={legalName}
+                  onChange={(event) => setLegalName(event.target.value)}
+                  placeholder="Nom legal"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
+                />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">Logo URL</span>
+                <input
+                  type="url"
+                  value={logoUrl}
+                  onChange={(event) => setLogoUrl(event.target.value)}
+                  placeholder="https://exemple.com/logo.png"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">Email</span>
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="contact@entreprise.com"
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">Telephone</span>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                placeholder="+225 ..."
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
+              />
+            </label>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowMore((value) => !value)}
+            className="text-xs font-bold uppercase tracking-wide text-slate-500 hover:text-slate-950"
+          >
+            {showMore ? 'Masquer les details' : 'Ajouter adresse, NIF et site web'}
+          </button>
+
+          {showMore ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">NIF / RCCM</span>
+                <input
+                  type="text"
+                  value={taxId}
+                  onChange={(event) => setTaxId(event.target.value)}
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">Site web</span>
+                <input
+                  type="url"
+                  value={website}
+                  onChange={(event) => setWebsite(event.target.value)}
+                  placeholder="https://..."
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
+                />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">Adresse</span>
+                <textarea
+                  rows={3}
+                  value={address}
+                  onChange={(event) => setAddress(event.target.value)}
+                  placeholder="Adresse complete"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
+                />
+              </label>
+            </div>
+          ) : null}
 
           {error && (
             <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
@@ -609,11 +761,29 @@ function CreateCompanyModal({
               disabled={isSubmitting}
               className="rounded bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
             >
-              {isSubmitting ? 'Création...' : "Créer l'activité"}
+              {isSubmitting ? 'Creation...' : "Creer l'entreprise"}
             </button>
           </div>
         </form>
       </div>
     </div>
   )
+}
+
+function isOptionalHttpUrl(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return true
+  try {
+    const url = new URL(trimmed)
+    return ['http:', 'https:'].includes(url.protocol)
+  } catch {
+    return false
+  }
+}
+
+function normalizeOptionalUrl(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
 }
