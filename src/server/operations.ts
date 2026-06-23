@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 import { prisma } from './db'
-import type { PrismaClient } from '../generated/prisma'
+import type { PrismaClient } from '@prisma/client'
 
 async function getCompany(companySlug: string, permission: string) {
   const { requireCompanyAccess } = await import('./access')
