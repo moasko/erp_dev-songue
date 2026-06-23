@@ -4,7 +4,7 @@ import { deleteCookie, getCookie, setCookie } from '@tanstack/react-start/server
 import { z } from 'zod'
 import { prisma } from './db'
 import { hashPassword, verifyPassword } from './password'
-import type { Permission } from '../generated/prisma/client'
+import type { Permission } from '../generated/prisma'
 
 const sessionCookieName = 'erp_session'
 const sessionDurationMs = 1000 * 60 * 60 * 24 * 7
