@@ -2,10 +2,9 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { CreditCard, ImageIcon, Minus, Plus, Printer, ReceiptText, Search, ShoppingCart, Smartphone, Trash2, UserRound, Wallet, X } from 'lucide-react'
 import { useMemo, useState, type ComponentType, type ReactNode } from 'react'
 import { type CatalogCategory, type CatalogItem } from '~/domain/catalogData'
-import { useCompany } from '~/context/CompanyContext'
+import { useCompany, useMoney } from '~/context/CompanyContext'
 import { getPosData } from '~/server/dataFetchers'
 import { createPosSale } from '~/server/operations'
-import { formatMoney } from '~/utils/currency'
 
 type CartLine = {
   item: CatalogItem
@@ -36,6 +35,7 @@ export const Route = createFileRoute('/$companySlug/pos/register')({
 })
 
 function PosRegister() {
+  const { formatMoney } = useMoney()
   const { companySlug } = Route.useParams()
   const router = useRouter()
   const data = Route.useLoaderData()
@@ -299,6 +299,7 @@ function PosRegister() {
 }
 
 function ProductButton({ item, onAdd }: { item: CatalogItem; onAdd: () => void }) {
+  const { formatMoney } = useMoney()
   const isLowStock = item.stock !== null && item.minStockLevel && item.stock <= item.minStockLevel
 
   return (
@@ -334,6 +335,7 @@ function ProductButton({ item, onAdd }: { item: CatalogItem; onAdd: () => void }
 }
 
 function CartLineRow({ line, onChangeQuantity }: { line: CartLine; onChangeQuantity: (itemId: string, delta: number) => void }) {
+  const { formatMoney } = useMoney()
   return (
     <div className="px-5 py-4">
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -402,6 +404,7 @@ function PriceLine({ label, value }: { label: string; value: string }) {
 }
 
 function TicketModal({ companyName, ticket, onClose, onPrint }: { companyName: string; ticket: CheckoutTicket; onClose: () => void; onPrint: () => void }) {
+  const { formatMoney } = useMoney()
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 px-3 py-6 sm:items-center sm:px-4 sm:py-8" role="dialog" aria-modal="true">
       <div className="w-full max-w-md rounded border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-950">

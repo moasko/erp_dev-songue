@@ -486,7 +486,7 @@ function SidebarMenu({
       </button>
 
       {isOpen ? (
-        <div className="ml-4 mt-1 space-y-1 border-l border-slate-200 pl-2">
+        <div className="ml-4 mt-1 space-y-1 pl-2">
           {section.children.map((item) => (
             <SidebarSubLink
               key={`${section.label}-${item.path}-${item.label}`}
@@ -540,7 +540,7 @@ function SidebarLink({
       activeProps={{
         className: featured
           ? 'bg-slate-950 text-white font-bold'
-          : 'border-l-2 border-slate-950 pl-2.5 bg-slate-100 text-slate-950 font-bold hover:bg-slate-100',
+          : 'bg-slate-100 text-slate-950 font-bold hover:bg-slate-100',
       }}
       className={`flex items-center gap-2.5 rounded px-3 py-2 text-sm font-medium transition-colors ${
         featured

@@ -17,7 +17,8 @@ import {
 import * as React from 'react'
 import { getQuoteData } from '~/server/dataFetchers'
 import { createQuote, saveQuoteSettings, updateQuoteStatus } from '~/server/operations'
-import { formatMoney } from '~/utils/currency'
+import { useMoney } from '~/context/CompanyContext'
+import { ImageUploadField } from '~/components/ImageUploadField'
 
 export const Route = createFileRoute('/$companySlug/quotes')({
   loader: async ({ params }) => getQuoteData({ data: { companySlug: params.companySlug } }),
@@ -52,6 +53,7 @@ const statusClasses: Record<string, string> = {
 }
 
 function QuotesPage() {
+  const { formatMoney } = useMoney()
   const { companySlug } = Route.useParams()
   const router = useRouter()
   const data = Route.useLoaderData()
@@ -295,6 +297,7 @@ function QuotesPage() {
         <SettingsModal
           settings={settings}
           companyName={data.company.name}
+          companySlug={companySlug}
           onClose={() => setActiveModal(null)}
           onSubmit={async (payload) => {
             const nextSettings = await saveQuoteSettings({ data: { companySlug, ...payload } })
@@ -321,6 +324,7 @@ function QuoteModal({
   onClose: () => void
   onSubmit: (payload: any) => Promise<void>
 }) {
+  const { formatMoney } = useMoney()
   const [customerId, setCustomerId] = React.useState('')
   const [customerName, setCustomerName] = React.useState('')
   const [customerEmail, setCustomerEmail] = React.useState('')
@@ -509,7 +513,7 @@ function QuoteModal({
   )
 }
 
-function SettingsModal({ settings, companyName, onClose, onSubmit }: { settings: any; companyName: string; onClose: () => void; onSubmit: (payload: any) => Promise<void> }) {
+function SettingsModal({ settings, companyName, companySlug, onClose, onSubmit }: { settings: any; companyName: string; companySlug: string; onClose: () => void; onSubmit: (payload: any) => Promise<void> }) {
   const [form, setForm] = React.useState({
     logoUrl: settings.logoUrl ?? '',
     legalName: settings.legalName ?? companyName,
@@ -555,7 +559,6 @@ function SettingsModal({ settings, companyName, onClose, onSubmit }: { settings:
       <form onSubmit={(event) => { void handleSubmit(event) }} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField label="Nom legal" value={form.legalName} onChange={(value) => updateField('legalName', value)} />
-          <TextField label="Logo URL" value={form.logoUrl} onChange={(value) => updateField('logoUrl', value)} placeholder="https://..." />
           <TextField label="Telephone" value={form.phone} onChange={(value) => updateField('phone', value)} />
           <TextField label="Email" value={form.email} onChange={(value) => updateField('email', value)} type="email" />
           <TextField label="NIF / RCCM" value={form.taxId} onChange={(value) => updateField('taxId', value)} />
@@ -567,6 +570,14 @@ function SettingsModal({ settings, companyName, onClose, onSubmit }: { settings:
             </div>
           </label>
         </div>
+        <ImageUploadField
+          label="Logo"
+          companySlug={companySlug}
+          kind="logo"
+          value={form.logoUrl}
+          onChange={(value) => updateField('logoUrl', value)}
+          hint="Affiche en tete du devis imprime. JPG, PNG, WEBP, GIF ou AVIF. 5 Mo maximum."
+        />
         <label className="block">
           <span className="field-label">Adresse</span>
           <textarea value={form.address} onChange={(event) => updateField('address', event.target.value)} rows={2} className="field-input" />
@@ -596,6 +607,7 @@ function SettingsModal({ settings, companyName, onClose, onSubmit }: { settings:
 }
 
 function QuotePrint({ quote, settings, companyName }: { quote: any; settings: any; companyName: string }) {
+  const { formatMoney } = useMoney()
   const discount = Math.round(quote.subtotalCents * (quote.discountRate / 100))
   const taxable = Math.max(0, quote.subtotalCents - discount)
   const tax = Math.round(taxable * (quote.taxRate / 100))
@@ -725,6 +737,7 @@ function TextField({ label, value, onChange, ...props }: Omit<React.InputHTMLAtt
 }
 
 function AmountRow({ label, value, strong = false }: { label: string; value: number; strong?: boolean }) {
+  const { formatMoney } = useMoney()
   return (
     <div className={`flex items-center justify-between gap-3 ${strong ? 'text-lg font-black text-slate-950' : 'text-sm text-slate-600'}`}>
       <span>{label}</span>

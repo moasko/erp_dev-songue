@@ -3,7 +3,7 @@ import { ArrowDownRight, Download, ReceiptText } from 'lucide-react'
 import { useState } from 'react'
 import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 import { getFinanceData } from '~/server/dataFetchers'
-import { formatMoney } from '~/utils/currency'
+import { useMoney } from '~/context/CompanyContext'
 import { downloadCsv } from '~/utils/csvExport'
 
 export const Route = createFileRoute('/$companySlug/finance/expenses')({
@@ -12,6 +12,7 @@ export const Route = createFileRoute('/$companySlug/finance/expenses')({
 })
 
 function ExpensesPage() {
+  const { formatMoney } = useMoney()
   const { transactions } = Route.useLoaderData()
   const [datePreset, setDatePreset] = useState<DatePreset>('month')
   const [startDate, setStartDate] = useState(todayInputValue())

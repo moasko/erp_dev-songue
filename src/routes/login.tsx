@@ -1,6 +1,15 @@
 import { Link, createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { LockKeyhole, Mail } from 'lucide-react'
 import * as React from 'react'
+import {
+  AuthCard,
+  AuthShell,
+  BrandMark,
+  ErrorBanner,
+  Field,
+  PageHeading,
+  SubmitButton,
+} from '~/components/AuthShell'
 import { getAuthState, getInstallationState, login } from '~/server/auth'
 
 // N'accepte que les chemins internes ("/...") pour eviter une redirection
@@ -27,6 +36,10 @@ export const Route = createFileRoute('/login')({
         to: '/$companySlug/dashboard',
         params: { companySlug: firstCompany.slug },
       })
+    }
+    // Deja connecte mais inscription abandonnee a l'etape 2 : on la reprend.
+    if (auth.user) {
+      throw redirect({ to: '/onboarding' })
     }
   },
   component: LoginPage,
@@ -55,6 +68,12 @@ function LoginPage() {
       return
     }
 
+    // Compte cree mais email jamais confirme : le serveur a renvoye un code neuf.
+    if (result?.needsVerification && result.email) {
+      await navigate({ to: '/verify', search: { email: result.email } })
+      return
+    }
+
     if (result?.needsTotp) {
       // Le mot de passe est bon mais un code 2FA est attendu.
       if (needsTotp) setError(result.message)
@@ -71,105 +90,58 @@ function LoginPage() {
   }
 
   return (
-    <AuthFrame>
-      <form onSubmit={handleSubmit} className="w-full">
-        <BrandMark />
+    <AuthShell>
+      <BrandMark subtitle="Application de gestion" />
+      <AuthCard>
+        <PageHeading title="Connexion" description="Entrez dans votre espace de travail." />
 
-        <div className="mt-8">
-          <h1 className="text-2xl font-bold text-slate-950 dark:text-slate-50">Connexion</h1>
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Entrez dans votre espace de travail.</p>
-        </div>
-
-        <div className="mt-7 grid gap-4">
-          <Field icon={Mail} label="Email" value={email} onChange={setEmail} type="email" autoComplete="email" placeholder="nom@entreprise.com" />
-          <Field icon={LockKeyhole} label="Mot de passe" value={password} onChange={setPassword} type="password" autoComplete="current-password" placeholder="Votre mot de passe" />
+        <form onSubmit={handleSubmit} className="mt-7 grid gap-4">
+          <Field
+            icon={Mail}
+            label="Email"
+            value={email}
+            onChange={setEmail}
+            type="email"
+            autoComplete="email"
+            placeholder="nom@entreprise.com"
+          />
+          <Field
+            icon={LockKeyhole}
+            label="Mot de passe"
+            value={password}
+            onChange={setPassword}
+            type="password"
+            autoComplete="current-password"
+            placeholder="Votre mot de passe"
+          />
 
           {needsTotp ? (
-            <Field icon={LockKeyhole} label="Code de verification (2FA)" value={totpCode} onChange={setTotpCode} type="text" autoComplete="one-time-code" placeholder="Code a 6 chiffres" />
+            <Field
+              icon={LockKeyhole}
+              label="Code de verification (2FA)"
+              value={totpCode}
+              onChange={setTotpCode}
+              autoComplete="one-time-code"
+              placeholder="Code a 6 chiffres"
+            />
           ) : null}
 
-          {error ? (
-            <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
-              {error}
-            </div>
-          ) : null}
+          <ErrorBanner message={error} />
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="mt-1 inline-flex h-11 items-center justify-center rounded bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-emerald-400 dark:text-slate-950 dark:hover:bg-emerald-300"
-          >
-            {isSubmitting ? 'Connexion...' : 'Se connecter'}
-          </button>
-        </div>
+          <div className="mt-2">
+            <SubmitButton isSubmitting={isSubmitting}>
+              {isSubmitting ? 'Connexion...' : 'Se connecter'}
+            </SubmitButton>
+          </div>
+        </form>
 
-        <p className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
+        <p className="mt-6 text-center text-sm text-slate-500">
           Premiere utilisation ?{' '}
-          <Link to="/register" className="font-semibold text-slate-950 hover:underline dark:text-emerald-300">
-            Creer l'espace entreprise
+          <Link to="/register" className="font-semibold text-slate-950 hover:underline">
+            Creer votre espace
           </Link>
         </p>
-      </form>
-    </AuthFrame>
-  )
-}
-
-function AuthFrame({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="grid min-h-screen place-items-center bg-slate-50 px-4 py-8 text-slate-950 dark:bg-slate-950 dark:text-slate-50">
-      <section className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-8">
-        {children}
-      </section>
-    </main>
-  )
-}
-
-function BrandMark() {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="grid size-10 place-items-center rounded bg-slate-950 text-sm font-bold text-white dark:bg-emerald-400 dark:text-slate-950">
-        GP
-      </span>
-      <div>
-        <p className="text-sm font-bold text-slate-950 dark:text-slate-50">Gestion PME</p>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Application de gestion</p>
-      </div>
-    </div>
-  )
-}
-
-function Field({
-  icon: Icon,
-  label,
-  value,
-  onChange,
-  type,
-  autoComplete,
-  placeholder,
-}: {
-  icon: typeof Mail
-  label: string
-  value: string
-  onChange: (value: string) => void
-  type: string
-  autoComplete: string
-  placeholder: string
-}) {
-  return (
-    <label className="grid gap-2">
-      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{label}</span>
-      <span className="flex h-11 items-center gap-2 rounded border border-slate-300 bg-white px-3 focus-within:border-slate-950 dark:border-slate-700 dark:bg-slate-950 dark:focus-within:border-emerald-300">
-        <Icon className="size-4 text-slate-500 dark:text-slate-400" />
-        <input
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="w-full bg-transparent text-sm text-slate-950 outline-none placeholder:text-slate-400 dark:text-slate-50 dark:placeholder:text-slate-500"
-          autoComplete={autoComplete}
-          placeholder={placeholder}
-          type={type}
-          required
-        />
-      </span>
-    </label>
+      </AuthCard>
+    </AuthShell>
   )
 }

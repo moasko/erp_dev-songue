@@ -2,8 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { Banknote, Boxes, Contact, ReceiptText, ShoppingCart } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { getDashboardData } from '~/server/dashboard'
-import { useCompany } from '~/context/CompanyContext'
-import { formatMoney } from '~/utils/currency'
+import { useCompany, useMoney } from '~/context/CompanyContext'
 
 export const Route = createFileRoute('/$companySlug/dashboard')({
   loader: async ({ params }) => getDashboardData({ data: { companySlug: params.companySlug } }),
@@ -11,6 +10,7 @@ export const Route = createFileRoute('/$companySlug/dashboard')({
 })
 
 function DashboardPage() {
+  const { formatMoney } = useMoney()
   const { companySlug } = Route.useParams()
   const { activeCompany } = useCompany()
   const { accounts, transactions, lowStock, lowStockCount, openDealsCount } = Route.useLoaderData()

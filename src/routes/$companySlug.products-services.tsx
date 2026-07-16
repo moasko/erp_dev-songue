@@ -1,7 +1,9 @@
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
-import { useMemo, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type FormEvent, type InputHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react'
 import {
   AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
   Boxes,
   Briefcase,
   Check,
@@ -19,7 +21,8 @@ import {
 import { type CatalogCategory, type CatalogItem, type CatalogItemStatus, type CatalogItemType } from '~/domain/catalogData'
 import { getCatalogData } from '~/server/dataFetchers'
 import { createCatalogCategory, createCatalogItem, restockCatalogItem, updateCatalogItemStatus } from '~/server/operations'
-import { formatMoney } from '~/utils/currency'
+import { useMoney } from '~/context/CompanyContext'
+import { ImageUploadField } from '~/components/ImageUploadField'
 
 export const Route = createFileRoute('/$companySlug/products-services')({
   loader: async ({ params }) => getCatalogData({ data: { companySlug: params.companySlug } }),
@@ -73,7 +76,23 @@ const categoryFormDefaults: CategoryFormState = {
   color: 'slate',
 }
 
+// Le formulaire d'ajout est decoupe en etapes : la saisie complete tenait sur un
+// seul ecran trop long. Un service n'a pas de stock, son parcours saute donc cette
+// etape au lieu d'afficher une section vide.
+type ProductStep = 'infos' | 'stock' | 'prix'
+
+const productStepLabels: Record<ProductStep, string> = {
+  infos: 'Informations',
+  stock: 'Stock',
+  prix: 'Prix',
+}
+
+function productStepsFor(type: CatalogItemType): ProductStep[] {
+  return type === 'Product' ? ['infos', 'stock', 'prix'] : ['infos', 'prix']
+}
+
 function CatalogPage() {
+  const { formatMoney, symbol } = useMoney()
   const { companySlug } = Route.useParams()
   const router = useRouter()
   const data = Route.useLoaderData()
@@ -86,6 +105,7 @@ function CatalogPage() {
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
   const [activeModal, setActiveModal] = useState<CatalogModal>(null)
   const [productForm, setProductForm] = useState<ProductFormState>(productFormDefaults)
+  const [productStep, setProductStep] = useState(0)
   const [categoryForm, setCategoryForm] = useState<CategoryFormState>(categoryFormDefaults)
   const [actionMessage, setActionMessage] = useState('')
   const [isSaving, setIsSaving] = useState(false)
@@ -125,7 +145,80 @@ function CatalogPage() {
       stock: type === 'Product' ? '0' : '',
       minStockLevel: type === 'Product' ? '5' : '',
     })
+    setProductStep(0)
     setActiveModal('product')
+  }
+
+  // Le nombre d'etapes depend du type : passer de Produit a Service en cours de
+  // route peut laisser l'index hors bornes, on le borne plutot que de le remettre
+  // a zero (ce qui ferait perdre sa place a l'utilisateur).
+  const productSteps = productStepsFor(productForm.type)
+  const currentStepIndex = Math.min(productStep, productSteps.length - 1)
+  const currentStep = productSteps[currentStepIndex]
+  const isLastStep = currentStepIndex === productSteps.length - 1
+
+  // Chaque etape est validee a la sortie, pour ne pas laisser decouvrir une erreur
+  // de saisie trois ecrans plus loin. `addProduct` revalide tout a l'envoi.
+  function validateStep(step: ProductStep): string | null {
+    if (step === 'infos') {
+      if (!productForm.name.trim()) return 'Renseigne le nom.'
+      if (!productForm.sku.trim()) return 'Renseigne le SKU.'
+      return null
+    }
+    if (step === 'stock') {
+      const stock = Number(productForm.stock)
+      const minStockLevel = Number(productForm.minStockLevel)
+      if (!Number.isFinite(stock) || stock < 0) return 'Renseigne un stock valide.'
+      if (!Number.isFinite(minStockLevel) || minStockLevel < 0) return 'Renseigne un stock minimum valide.'
+      return null
+    }
+    const price = Number(productForm.price)
+    const cost = Number(productForm.cost)
+    const wholesalePrice = Number(productForm.wholesalePrice)
+    if (!productForm.price.trim() || !Number.isFinite(price) || price < 0) return 'Renseigne un prix de vente valide.'
+    if (!Number.isFinite(cost) || cost < 0) return 'Renseigne un cout valide.'
+    if (productForm.type === 'Product' && (!Number.isFinite(wholesalePrice) || wholesalePrice < 0)) {
+      return 'Renseigne un prix de gros valide.'
+    }
+    return null
+  }
+
+  function goToNextStep() {
+    const error = validateStep(currentStep)
+    if (error) {
+      setActionMessage(error)
+      return
+    }
+    setActionMessage('')
+    setProductStep(currentStepIndex + 1)
+  }
+
+  function goToPreviousStep() {
+    setActionMessage('')
+    setProductStep(Math.max(0, currentStepIndex - 1))
+  }
+
+  // Sur les etapes intermediaires, aucun bouton submit n'est rendu : le navigateur
+  // ne declenche donc pas de soumission implicite et Entree ne ferait rien. On la
+  // cable a "Continuer", qui est ce que l'utilisateur attend en tapant au clavier.
+  function handleProductKeyDown(event: KeyboardEvent<HTMLFormElement>) {
+    if (event.key !== 'Enter' || isLastStep) return
+    const target = event.target as HTMLElement
+    // Dans une description, Entree doit rester un saut de ligne.
+    if (target.tagName === 'TEXTAREA') return
+    event.preventDefault()
+    goToNextStep()
+  }
+
+  // Filet de securite : si une soumission survient malgre tout avant la derniere
+  // etape, elle avance au lieu d'enregistrer un article incomplet.
+  function handleProductSubmit(event: FormEvent<HTMLFormElement>) {
+    if (!isLastStep) {
+      event.preventDefault()
+      goToNextStep()
+      return
+    }
+    void addProduct(event)
   }
 
   async function addProduct(event: FormEvent<HTMLFormElement>) {
@@ -344,7 +437,10 @@ function CatalogPage() {
 
       {activeModal === 'product' ? (
         <Modal title={productForm.type === 'Product' ? 'Ajouter un produit' : 'Ajouter un service'} onClose={() => setActiveModal(null)} wide>
-          <form onSubmit={addProduct} className="space-y-5">
+          <form onSubmit={handleProductSubmit} onKeyDown={handleProductKeyDown} className="space-y-5">
+            <StepIndicator steps={productSteps} currentIndex={currentStepIndex} />
+
+            {currentStep === 'infos' ? (
             <FormSection title={productForm.type === 'Product' ? 'Informations produit' : 'Informations service'}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <TextField label={productForm.type === 'Product' ? 'Nom du produit *' : 'Nom du service *'} name="name" value={productForm.name} onChange={(value) => setProductForm((current) => ({ ...current, name: value }))} placeholder={productForm.type === 'Product' ? 'Ex: Smartphone Samsung Galaxy' : 'Ex: Installation reseau'} required />
@@ -375,10 +471,26 @@ function CatalogPage() {
                 <div className="sm:col-span-2">
                   <TextAreaField label="Description" value={productForm.description} onChange={(value) => setProductForm((current) => ({ ...current, description: value }))} placeholder={productForm.type === 'Product' ? 'Description du produit...' : 'Description de la prestation...'} />
                 </div>
+                <div className="sm:col-span-2">
+                  <ImageUploadField
+                    label="Image"
+                    companySlug={companySlug}
+                    kind="product"
+                    value={productForm.imageUrl}
+                    onChange={(value) => setProductForm((current) => ({ ...current, imageUrl: value }))}
+                  />
+                </div>
+                {productForm.type === 'Service' ? (
+                  <div className="rounded border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+                    <p className="text-sm font-bold text-slate-950">Pas de gestion de stock</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">Un service est vendu comme une prestation. Il n'a pas de quantite en depot, pas de seuil minimum et ne declenche pas d'alerte de rupture.</p>
+                  </div>
+                ) : null}
               </div>
             </FormSection>
+            ) : null}
 
-            {productForm.type === 'Product' ? (
+            {currentStep === 'stock' ? (
             <FormSection title="Stock du produit">
               <div className="grid gap-4 sm:grid-cols-2">
                   <div>
@@ -389,46 +501,49 @@ function CatalogPage() {
                     <TextField label="Stock minimum" name="minStockLevel" value={productForm.minStockLevel} onChange={(value) => setProductForm((current) => ({ ...current, minStockLevel: value }))} type="number" min="0" />
                     <p className="mt-1 text-xs text-slate-500">Alerte envoyee lorsque le stock descend en dessous de cette valeur</p>
                   </div>
-                <label className="block">
+                <label className="block sm:col-span-2">
                   <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-400">Fournisseur</span>
                   <input list="product-suppliers" value={productForm.supplier} onChange={(event) => setProductForm((current) => ({ ...current, supplier: event.target.value }))} placeholder="Selectionner un fournisseur" className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:border-slate-950" />
                   <datalist id="product-suppliers">
                     {suppliers.map((supplier) => <option key={supplier} value={supplier} />)}
                   </datalist>
                 </label>
-                <TextField label="Image URL" name="imageUrl" value={productForm.imageUrl} onChange={(value) => setProductForm((current) => ({ ...current, imageUrl: value }))} placeholder="https://..." />
               </div>
             </FormSection>
-            ) : (
-            <FormSection title="Execution du service">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-sm font-bold text-slate-950">Pas de gestion de stock</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">Un service est vendu comme une prestation. Il n'a pas de quantite en depot, pas de seuil minimum et ne declenche pas d'alerte de rupture.</p>
-                </div>
-                <TextField label="Image URL" name="imageUrl" value={productForm.imageUrl} onChange={(value) => setProductForm((current) => ({ ...current, imageUrl: value }))} placeholder="https://..." />
-              </div>
-            </FormSection>
-            )}
+            ) : null}
 
+            {currentStep === 'prix' ? (
             <FormSection title={productForm.type === 'Product' ? 'Prix du produit' : 'Prix du service'}>
               <div className={`grid gap-4 ${productForm.type === 'Product' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
-                <TextField label={productForm.type === 'Product' ? "Prix d'achat (FCFA) *" : 'Cout de revient (FCFA)'} name="cost" value={productForm.cost} onChange={(value) => setProductForm((current) => ({ ...current, cost: value }))} type="number" min="0" required={productForm.type === 'Product'} />
-                <PriceField label={productForm.type === 'Product' ? 'Prix detail (FCFA) *' : 'Prix de la prestation (FCFA) *'} value={productForm.price} cost={productForm.cost} onChange={(value) => setProductForm((current) => ({ ...current, price: value }))} />
+                <TextField label={productForm.type === 'Product' ? `Prix d'achat (${symbol}) *` : `Cout de revient (${symbol})`} name="cost" value={productForm.cost} onChange={(value) => setProductForm((current) => ({ ...current, cost: value }))} type="number" min="0" required={productForm.type === 'Product'} />
+                <PriceField label={productForm.type === 'Product' ? `Prix detail (${symbol}) *` : `Prix de la prestation (${symbol}) *`} value={productForm.price} cost={productForm.cost} onChange={(value) => setProductForm((current) => ({ ...current, price: value }))} />
                 {productForm.type === 'Product' ? (
-                  <PriceField label="Prix gros (FCFA) *" value={productForm.wholesalePrice} cost={productForm.cost} onChange={(value) => setProductForm((current) => ({ ...current, wholesalePrice: value }))} />
+                  <PriceField label={`Prix gros (${symbol}) *`} value={productForm.wholesalePrice} cost={productForm.cost} onChange={(value) => setProductForm((current) => ({ ...current, wholesalePrice: value }))} />
                 ) : null}
               </div>
             </FormSection>
-            <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => setActiveModal(null)} className="inline-flex items-center justify-center gap-2 rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                <X className="size-4" />
-                Annuler
+            ) : null}
+
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-between">
+              <button
+                type="button"
+                onClick={currentStepIndex === 0 ? () => setActiveModal(null) : goToPreviousStep}
+                className="inline-flex items-center justify-center gap-2 rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                {currentStepIndex === 0 ? <X className="size-4" /> : <ArrowLeft className="size-4" />}
+                {currentStepIndex === 0 ? 'Annuler' : 'Retour'}
               </button>
-              <button type="submit" disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">
-                <Check className="size-4" />
-                {isSaving ? 'Enregistrement...' : 'Enregistrer'}
-              </button>
+              {isLastStep ? (
+                <button type="submit" disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">
+                  <Check className="size-4" />
+                  {isSaving ? 'Enregistrement...' : 'Enregistrer'}
+                </button>
+              ) : (
+                <button type="button" onClick={goToNextStep} className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+                  Continuer
+                  <ArrowRight className="size-4" />
+                </button>
+              )}
             </div>
           </form>
         </Modal>
@@ -468,6 +583,7 @@ function CatalogPage() {
 }
 
 function CatalogCard({ item, categories, onRestock, onToggleStatus }: { item: CatalogItem; categories: CatalogCategory[]; onRestock: (id: string) => void; onToggleStatus: (id: string) => void }) {
+  const { formatMoney } = useMoney()
   const category = categories.find((c) => c.id === item.categoryId)
   const stockState = getStockState(item)
 
@@ -522,6 +638,7 @@ function CatalogCard({ item, categories, onRestock, onToggleStatus }: { item: Ca
 }
 
 function CatalogList({ items, categories, onRestock, onToggleStatus }: { items: CatalogItem[]; categories: CatalogCategory[]; onRestock: (id: string) => void; onToggleStatus: (id: string) => void }) {
+  const { formatMoney } = useMoney()
   return (
     <div className="overflow-hidden rounded border border-slate-200 bg-white">
       <div className="overflow-x-auto">
@@ -589,6 +706,37 @@ function SummaryCard({ title, value, detail, icon: Icon, alert = false }: { titl
       <p className="text-2xl font-bold text-slate-950">{value}</p>
       <p className="mt-2 text-xs font-medium text-slate-500">{detail}</p>
     </div>
+  )
+}
+
+function StepIndicator({ steps, currentIndex }: { steps: ProductStep[]; currentIndex: number }) {
+  return (
+    <ol className="flex items-center gap-2">
+      {steps.map((step, index) => {
+        const done = index < currentIndex
+        const active = index === currentIndex
+        return (
+          <Fragment key={step}>
+            {index > 0 ? <span aria-hidden className={`h-px flex-1 ${done || active ? 'bg-slate-950' : 'bg-slate-200'}`} /> : null}
+            <li className="flex items-center gap-2">
+              <span
+                className={`grid size-6 shrink-0 place-items-center rounded-full text-xs font-bold ${
+                  done || active ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-400'
+                }`}
+              >
+                {done ? <Check className="size-3.5" /> : index + 1}
+              </span>
+              <span
+                aria-current={active ? 'step' : undefined}
+                className={`text-xs font-semibold ${active ? 'text-slate-950' : 'text-slate-400'}`}
+              >
+                {productStepLabels[step]}
+              </span>
+            </li>
+          </Fragment>
+        )
+      })}
+    </ol>
   )
 }
 

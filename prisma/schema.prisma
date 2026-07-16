@@ -7,23 +7,42 @@ datasource db {
 }
 
 model User {
-  id                 String               @id @default(cuid())
-  email              String               @unique
+  id                 String                   @id @default(cuid())
+  email              String                   @unique
   name               String
-  passwordHash       String               @default("")
-  isOwner            Boolean              @default(false)
+  passwordHash       String                   @default("")
+  isOwner            Boolean                  @default(false)
+  emailVerifiedAt    DateTime?
   totpSecret         String?
   totpEnabledAt      DateTime?
-  mustChangePassword Boolean              @default(false)
+  mustChangePassword Boolean                  @default(false)
   lastLoginAt        DateTime?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
   sessions           Session[]
   memberships        CompanyMembership[]
-  ownedWorkspaces    Workspace[]          @relation("WorkspaceOwner")
+  ownedWorkspaces    Workspace[]              @relation("WorkspaceOwner")
   invitations        CompanyInvitation[]
-  auditLogs          AuditLog[]           @relation("AuditActor")
+  auditLogs          AuditLog[]               @relation("AuditActor")
   passwordResets     PasswordResetToken[]
+  emailVerifications EmailVerificationToken[]
+}
+
+// Code a 6 chiffres envoye par email a l'inscription (etape 1 -> etape 2).
+// Seul le hash est stocke, comme pour les sessions et les liens d'invitation.
+model EmailVerificationToken {
+  id         String    @id @default(cuid())
+  userId     String
+  email      String
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Session {
@@ -86,6 +105,10 @@ model Company {
   workspaceId      String
   name             String
   slug             String              @unique
+  subdomain        String?             @unique
+  country          String?
+  currency         String?
+  locale           String?
   legalName        String?
   logoUrl          String?
   address          String?

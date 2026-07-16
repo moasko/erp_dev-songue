@@ -2,6 +2,9 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Building2, Copy, Image as ImageIcon, KeyRound, LockKeyhole, Mail, Plus, Save, ShieldCheck, ToggleLeft, ToggleRight, Trash2, Users } from 'lucide-react'
 import * as React from 'react'
 import { createRole, getCompanyAdministration, updateCompanyProfile } from '~/server/auth'
+import { ImageUploadField } from '~/components/ImageUploadField'
+import { defaultCurrency, defaultLocale } from '~/utils/currency'
+import { currencies, locales } from '~/utils/onboarding'
 import {
   changePassword,
   confirmTotpSetup,
@@ -98,6 +101,8 @@ function SettingsPage() {
         data: {
           companySlug,
           name: String(form.get('name') ?? ''),
+          currency: String(form.get('currency') ?? ''),
+          locale: String(form.get('locale') ?? ''),
           legalName: String(form.get('legalName') ?? ''),
           logoUrl,
           address: String(form.get('address') ?? ''),
@@ -189,6 +194,8 @@ function GeneralSettings({
   const formKey = [
     company?.id,
     company?.name,
+    company?.currency,
+    company?.locale,
     company?.legalName,
     company?.logoUrl,
     company?.address,
@@ -202,20 +209,18 @@ function GeneralSettings({
     <div className="space-y-6">
       <SettingsSection title="Informations entreprise" description="Ces informations seront utilisees sur les documents, devis et factures.">
         <form key={formKey} onSubmit={onSubmit} className="grid gap-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-            <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-50">
-              {logoUrl ? (
-                <img src={logoUrl} alt="Logo entreprise" className="size-full object-contain" />
-              ) : (
-                <ImageIcon className="size-8 text-slate-300" />
-              )}
-            </div>
-            <div className="grid min-w-0 flex-1 gap-4 sm:grid-cols-2">
-              <TextField label="Nom commercial *" name="name" defaultValue={company?.name ?? ''} required placeholder="Nom affiche dans l'application" />
-              <TextField label="Nom legal" name="legalName" defaultValue={company?.legalName ?? ''} placeholder="Raison sociale" />
-              <div className="sm:col-span-2">
-                <TextField label="Logo URL" name="logoUrl" defaultValue={logoUrl} placeholder="https://..." />
-              </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <TextField label="Nom commercial *" name="name" defaultValue={company?.name ?? ''} required placeholder="Nom affiche dans l'application" />
+            <TextField label="Nom legal" name="legalName" defaultValue={company?.legalName ?? ''} placeholder="Raison sociale" />
+            <div className="sm:col-span-2">
+              <ImageUploadField
+                label="Logo"
+                companySlug={companySlug}
+                kind="logo"
+                name="logoUrl"
+                defaultValue={logoUrl}
+                hint="Affiche dans l'application et sur les devis. JPG, PNG, WEBP, GIF ou AVIF. 5 Mo maximum."
+              />
             </div>
           </div>
 
@@ -224,6 +229,37 @@ function GeneralSettings({
             <TextField label="Email" name="email" type="email" defaultValue={company?.email ?? ''} />
             <TextField label="NIF / RCCM" name="taxId" defaultValue={company?.taxId ?? ''} />
             <TextField label="Site web" name="website" defaultValue={company?.website ?? ''} placeholder="https://..." />
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-400">Devise</span>
+              <select
+                name="currency"
+                defaultValue={company?.currency ?? defaultCurrency}
+                className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-950"
+              >
+                {currencies.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-slate-400">
+                Utilisee pour tous les montants affiches. Ne convertit pas les montants deja enregistres.
+              </span>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-400">Langue par defaut</span>
+              <select
+                name="locale"
+                defaultValue={company?.locale ?? defaultLocale}
+                className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-950"
+              >
+                {locales.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="block sm:col-span-2">
               <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-400">Adresse</span>
               <textarea name="address" defaultValue={company?.address ?? ''} rows={3} className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-950" placeholder="Adresse complete de l'entreprise" />
@@ -286,8 +322,14 @@ function UsersSettings({
         onMessage(result.message)
         return
       }
-      setGeneratedLink(`${window.location.origin}${result.invitePath}`)
-      onMessage('Invitation creee. Copie le lien et transmets-le a la personne concernee.')
+      // Le lien n'est affiche que si l'email n'est pas parti : sinon il n'y a rien
+      // a copier, et le montrer inviterait a le transmettre par un canal moins sur.
+      setGeneratedLink(result.delivered ? null : `${window.location.origin}${result.invitePath}`)
+      onMessage(
+        result.delivered
+          ? "Invitation envoyee par email a la personne concernee."
+          : "Invitation creee. L'email n'a pas pu etre envoye : copie le lien et transmets-le toi-meme.",
+      )
       formElement.reset()
       await onRefresh()
     } catch (error: any) {
@@ -310,8 +352,12 @@ function UsersSettings({
         onMessage(result.message)
         return
       }
-      setResetLink({ email, url: `${window.location.origin}${result.resetPath}` })
-      onMessage(`Lien de reinitialisation genere pour ${email} (valide ${result.expiresInMinutes} min, usage unique).`)
+      setResetLink(result.delivered ? null : { email, url: `${window.location.origin}${result.resetPath}` })
+      onMessage(
+        result.delivered
+          ? `Lien de reinitialisation envoye a ${email} (valide ${result.expiresInMinutes} min, usage unique).`
+          : `Lien genere pour ${email} (valide ${result.expiresInMinutes} min, usage unique). L'email n'a pas pu etre envoye : transmets-le toi-meme.`,
+      )
     } catch (error: any) {
       onMessage(error?.message ?? 'Impossible de generer le lien.')
     }

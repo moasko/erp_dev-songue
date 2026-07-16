@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowRight, FileCheck2, ReceiptText, ShoppingCart } from 'lucide-react'
 import { getPosData } from '~/server/dataFetchers'
-import { formatMoney } from '~/utils/currency'
+import { useMoney } from '~/context/CompanyContext'
 
 export const Route = createFileRoute('/$companySlug/sales/')({
   loader: async ({ params }) => getPosData({ data: { companySlug: params.companySlug } }),
@@ -9,6 +9,7 @@ export const Route = createFileRoute('/$companySlug/sales/')({
 })
 
 function SalesDashboard() {
+  const { formatMoney } = useMoney()
   const { companySlug } = Route.useParams()
   const { today } = Route.useLoaderData()
   const averageBasket = today.count > 0 ? today.total / today.count : 0
