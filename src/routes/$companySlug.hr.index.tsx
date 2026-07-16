@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Users, UserPlus, CalendarOff, TrendingUp } from 'lucide-react'
 import { getHrData } from '~/server/dataFetchers'
-import { formatMoney } from '~/utils/currency'
+import { useMoney } from '~/context/CompanyContext'
 
 export const Route = createFileRoute('/$companySlug/hr/')({
   loader: async ({ params }) => getHrData({ data: { companySlug: params.companySlug } }),
@@ -9,6 +9,7 @@ export const Route = createFileRoute('/$companySlug/hr/')({
 })
 
 function HrDashboard() {
+  const { formatMoney } = useMoney()
   const { employees, departments } = Route.useLoaderData()
 
   const totalEmployees = employees.length

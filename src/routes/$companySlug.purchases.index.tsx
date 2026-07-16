@@ -2,7 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { AlertTriangle, ArrowRight, FileText, Handshake, PackageCheck, ReceiptText, Truck } from 'lucide-react'
 import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 import { getPurchasesData } from '~/server/dataFetchers'
-import { formatMoney } from '~/utils/currency'
+import { useMoney } from '~/context/CompanyContext'
 import { useState } from 'react'
 
 export const Route = createFileRoute('/$companySlug/purchases/')({
@@ -11,6 +11,7 @@ export const Route = createFileRoute('/$companySlug/purchases/')({
 })
 
 function PurchasesDashboard() {
+  const { formatMoney } = useMoney()
   const { companySlug } = Route.useParams()
   const { vendors, purchaseInvoices, stockAlerts } = Route.useLoaderData()
   const [datePreset, setDatePreset] = useState<DatePreset>('month')

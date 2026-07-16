@@ -53,9 +53,9 @@
   --app-success-soft: rgba(0, 229, 153, 0.12);
   --app-glow-a: rgba(255, 69, 0, 0.15);
   --app-glow-b: rgba(255, 123, 0, 0.08);
-  --app-shadow-sm: 0 18px 60px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  --app-shadow-md: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 16px 50px rgba(0, 0, 0, 0.18);
-  --app-shadow-lg: 0 22px 70px rgba(0, 0, 0, 0.26);
+  --app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.16);
+  --app-shadow-md: 0 2px 6px rgba(0, 0, 0, 0.14);
+  --app-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.18);
   --app-primary-bg: orangered;
   --app-primary-bg-hover: #e13d00;
   --app-primary-text: #ffffff;
@@ -74,7 +74,12 @@
   --sidebar-width: 17rem;
 }
 
-html.theme-light {
+/* Les pages d'inscription et de connexion vivent hors du layout d'entreprise, qui
+   est le seul a poser `theme-light`. Elles declarent donc les memes tokens sur
+   leur propre conteneur : rendu clair des le HTML serveur, sans flash sombre et
+   sans toucher au theme choisi par l'utilisateur pour l'application. */
+html.theme-light,
+.auth-light {
   color-scheme: light;
   --app-bg: #f6f8fb;
   --app-bg-start: #ffffff;
@@ -93,9 +98,9 @@ html.theme-light {
   --app-success-soft: #d1fae5;
   --app-glow-a: rgba(255, 69, 0, 0.1);
   --app-glow-b: rgba(255, 123, 0, 0.06);
-  --app-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --app-shadow-md: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 22px rgba(15, 23, 42, 0.06);
-  --app-shadow-lg: 0 10px 28px rgba(15, 23, 42, 0.1);
+  --app-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --app-shadow-md: 0 1px 3px rgba(15, 23, 42, 0.05);
+  --app-shadow-lg: 0 2px 8px rgba(15, 23, 42, 0.06);
   --app-primary-bg: orangered;
   --app-primary-bg-hover: #e13d00;
   --app-primary-text: #ffffff;
@@ -132,14 +137,13 @@ html.theme-light {
 
   .list-row:hover {
     background-color: var(--app-panel-raised) !important;
-    box-shadow: inset 3px 0 0 var(--app-accent);
   }
 
+  /* La ligne selectionnee se distingue par son fond et son contour, sans barre
+     d'accent a gauche. */
   .quote-row-selected {
     background-color: var(--app-panel-raised) !important;
-    box-shadow:
-      inset 4px 0 0 var(--app-accent),
-      inset 0 0 0 1px var(--app-border-strong);
+    box-shadow: inset 0 0 0 1px var(--app-border-strong);
   }
 
   .bg-white,
@@ -278,6 +282,18 @@ html:not(.theme-light) .dark\:focus-within\:border-emerald-300:focus-within {
 html:not(.theme-light) .dark\:text-cyan-300,
 html:not(.theme-light) .dark\:text-emerald-300 {
   color: var(--app-accent) !important;
+}
+
+.auth-light {
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+
+/* Dans le theme sombre, `input::placeholder` est force en vert-gris par la base :
+   il faut le neutraliser sur les surfaces claires. */
+.auth-light input::placeholder,
+.auth-light textarea::placeholder {
+  color: var(--app-faint);
 }
 
 .neon-surface {

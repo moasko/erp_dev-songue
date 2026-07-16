@@ -15,6 +15,10 @@ export const Route = createFileRoute('/')({
         params: { companySlug: firstCompany.slug },
       })
     }
+    // Compte cree mais inscription abandonnee a l'etape 2 : on la reprend.
+    if (auth.user) {
+      throw redirect({ to: '/onboarding' })
+    }
     throw redirect({ to: '/login', search: { redirect: undefined } })
   },
 })

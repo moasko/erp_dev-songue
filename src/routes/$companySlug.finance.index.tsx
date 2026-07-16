@@ -4,8 +4,7 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 import { getFinanceData } from '~/server/dataFetchers'
 import { createFinanceTransaction } from '~/server/operations'
-import { useCompany } from '~/context/CompanyContext'
-import { formatMoney, formatSignedMoney } from '~/utils/currency'
+import { useCompany, useMoney } from '~/context/CompanyContext'
 
 export const Route = createFileRoute('/$companySlug/finance/')({
   loader: async ({ params }) => getFinanceData({ data: { companySlug: params.companySlug } }),
@@ -13,6 +12,7 @@ export const Route = createFileRoute('/$companySlug/finance/')({
 })
 
 function FinanceDashboard() {
+  const { formatMoney, formatSignedMoney } = useMoney()
   const { companySlug } = Route.useParams()
   const router = useRouter()
   const { accounts, transactions } = Route.useLoaderData()

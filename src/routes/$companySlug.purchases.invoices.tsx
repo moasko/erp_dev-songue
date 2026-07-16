@@ -5,7 +5,7 @@ import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } 
 import { getPurchasesData } from '~/server/dataFetchers'
 import { createPurchaseInvoice } from '~/server/operations'
 import { downloadCsv } from '~/utils/csvExport'
-import { formatMoney } from '~/utils/currency'
+import { useMoney } from '~/context/CompanyContext'
 
 export const Route = createFileRoute('/$companySlug/purchases/invoices')({
   loader: async ({ params }) => getPurchasesData({ data: { companySlug: params.companySlug } }),
@@ -13,6 +13,7 @@ export const Route = createFileRoute('/$companySlug/purchases/invoices')({
 })
 
 function PurchaseInvoicesPage() {
+  const { formatMoney } = useMoney()
   const { companySlug } = Route.useParams()
   const router = useRouter()
   const { accounts, vendors, purchaseInvoices } = Route.useLoaderData()

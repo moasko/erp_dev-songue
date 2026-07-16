@@ -3,7 +3,7 @@ import { ArrowUpRight, Download, ReceiptText } from 'lucide-react'
 import { useState } from 'react'
 import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 import { getFinanceData } from '~/server/dataFetchers'
-import { formatMoney } from '~/utils/currency'
+import { useMoney } from '~/context/CompanyContext'
 import { downloadCsv } from '~/utils/csvExport'
 
 export const Route = createFileRoute('/$companySlug/finance/revenues')({
@@ -12,6 +12,7 @@ export const Route = createFileRoute('/$companySlug/finance/revenues')({
 })
 
 function RevenuesPage() {
+  const { formatMoney } = useMoney()
   const { transactions } = Route.useLoaderData()
   const [datePreset, setDatePreset] = useState<DatePreset>('month')
   const [startDate, setStartDate] = useState(todayInputValue())
@@ -81,6 +82,7 @@ function Stat({ title, value }: { title: string; value: string }) {
 }
 
 function TransactionList({ transactions, empty }: { transactions: any[]; empty: string }) {
+  const { formatMoney } = useMoney()
   return (
     <section className="neon-surface overflow-hidden rounded">
       <div className="border-b border-slate-200 px-5 py-4">

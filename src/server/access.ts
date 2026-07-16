@@ -10,6 +10,8 @@ export type SessionCompany = {
   name: string
   slug: string
   logoUrl: string | null
+  currency: string | null
+  locale: string | null
   roles: string[]
   permissions: string[]
 }
@@ -64,7 +66,9 @@ async function loadSessionContext(tokenHash: string): Promise<SessionContext | n
           memberships: {
             where: { status: 'ACTIVE' },
             select: {
-              company: { select: { id: true, name: true, slug: true, logoUrl: true } },
+              company: {
+                select: { id: true, name: true, slug: true, logoUrl: true, currency: true, locale: true },
+              },
               roles: {
                 select: {
                   role: {
@@ -97,6 +101,8 @@ async function loadSessionContext(tokenHash: string): Promise<SessionContext | n
       name: membership.company.name,
       slug: membership.company.slug,
       logoUrl: membership.company.logoUrl,
+      currency: membership.company.currency,
+      locale: membership.company.locale,
       roles: membership.roles.map((userRole) => userRole.role.name),
       permissions: Array.from(
         new Set(

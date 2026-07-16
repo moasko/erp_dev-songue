@@ -35,6 +35,10 @@ async function main() {
       email,
       passwordHash: await hashPassword(password),
       isOwner: true,
+      // Compte provisionne en ligne de commande : il n'y a pas d'etape de
+      // verification a lui faire passer, et sans cette date le login le renverrait
+      // vers /verify en attendant un code qu'il n'a jamais demande.
+      emailVerifiedAt: new Date(),
     }
   })
 

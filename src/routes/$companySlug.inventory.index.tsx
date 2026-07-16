@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowRight, ArrowRightLeft, Boxes, Package, PackageCheck
 import { useMemo, useState } from 'react'
 import { type CatalogItem } from '~/domain/catalogData'
 import { getInventoryData } from '~/server/dataFetchers'
-import { formatMoney } from '~/utils/currency'
+import { useMoney } from '~/context/CompanyContext'
 
 export const Route = createFileRoute('/$companySlug/inventory/')({
   loader: async ({ params }) => getInventoryData({ data: { companySlug: params.companySlug } }),
@@ -11,6 +11,7 @@ export const Route = createFileRoute('/$companySlug/inventory/')({
 })
 
 function InventoryDashboard() {
+  const { formatMoney } = useMoney()
   const { companySlug } = Route.useParams()
   const data = Route.useLoaderData()
   const products = data.items.map(toCatalogItem).filter((item: CatalogItem) => item.type === 'Product')

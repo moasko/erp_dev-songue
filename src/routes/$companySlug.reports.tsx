@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { BarChart3, Boxes, CircleDollarSign, Users } from 'lucide-react'
 import { getReportsData } from '~/server/dataFetchers'
-import { formatMoney } from '~/utils/currency'
+import { useMoney } from '~/context/CompanyContext'
 
 export const Route = createFileRoute('/$companySlug/reports')({
   loader: async ({ params }) => getReportsData({ data: { companySlug: params.companySlug } }),
@@ -9,6 +9,7 @@ export const Route = createFileRoute('/$companySlug/reports')({
 })
 
 function ReportsPage() {
+  const { formatMoney } = useMoney()
   const { income, expenses, stockValue, openDeals } = Route.useLoaderData()
 
   return (

@@ -4,6 +4,7 @@ import { getCookie, getRequestHeader, getRequestIP, setCookie } from '@tanstack/
 import { z } from 'zod'
 import { prisma } from './db'
 import { getSessionContext, invalidateSessionCache, requireCompanyAccess } from './access'
+import { appBaseUrl, invitationEmail, passwordResetEmail, sendMail } from './mail'
 import { hashPassword, verifyPassword } from './password'
 import { isBlocked, recordFailure, recordSuccess, throttle } from './rateLimit'
 import { generateTotpSecret, totpUri, verifyTotp } from './totp'
@@ -112,8 +113,30 @@ export const createInvitation = createServerFn({ method: 'POST' })
       },
     })
 
-    // Le token n'est jamais stocke en clair : le lien n'est visible qu'ici.
-    return { ok: true as const, invitePath: `/invite/${token}` }
+    const invitePath = `/invite/${token}`
+    const baseUrl = appBaseUrl()
+
+    // Sans email envoye (pas de transport, ou APP_BASE_URL absent en production),
+    // le lien reste affiche dans l'interface : l'invitation est transmise a la main
+    // plutot que perdue. Le token n'est jamais stocke en clair, ce lien est donc
+    // la seule occasion de le lire.
+    const delivery = baseUrl
+      ? await sendMail({
+          to: email,
+          ...invitationEmail({
+            inviteUrl: `${baseUrl}${invitePath}`,
+            companyName: company.name,
+            roleName: role.name,
+            inviterName: user.name,
+          }),
+        })
+      : null
+
+    if (!baseUrl) {
+      console.warn('createInvitation: APP_BASE_URL manquant, invitation non envoyee par email.')
+    }
+
+    return { ok: true as const, invitePath, delivered: Boolean(delivery?.delivered) }
   })
 
 export const getInvitationInfo = createServerFn({ method: 'GET' })
@@ -178,6 +201,9 @@ export const acceptInvitation = createServerFn({ method: 'POST' })
           name,
           email: invitation.email,
           passwordHash: await hashPassword(data.password),
+          // Le lien d'invitation a ete recu sur cette adresse : elle est donc deja
+          // prouvee. Sans cette date, le compte serait renvoye vers /verify.
+          emailVerifiedAt: new Date(),
         },
       })
     }
@@ -292,7 +318,26 @@ export const createPasswordResetLink = createServerFn({ method: 'POST' })
       },
     })
 
-    return { ok: true as const, resetPath: `/reset/${token}`, expiresInMinutes: 30 }
+    const resetPath = `/reset/${token}`
+    const expiresInMinutes = Math.round(resetDurationMs / 60000)
+    const baseUrl = appBaseUrl()
+
+    const delivery = baseUrl
+      ? await sendMail({
+          to: target.email,
+          ...passwordResetEmail({
+            resetUrl: `${baseUrl}${resetPath}`,
+            name: target.name,
+            expiresInMinutes,
+          }),
+        })
+      : null
+
+    if (!baseUrl) {
+      console.warn('createPasswordResetLink: APP_BASE_URL manquant, lien non envoye par email.')
+    }
+
+    return { ok: true as const, resetPath, expiresInMinutes, delivered: Boolean(delivery?.delivered) }
   })
 
 export const getResetInfo = createServerFn({ method: 'GET' })

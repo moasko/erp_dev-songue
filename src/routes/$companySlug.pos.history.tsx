@@ -2,9 +2,8 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Clock, Eye, Printer, ReceiptText, Search, X } from 'lucide-react'
 import { useState } from 'react'
 import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
-import { useCompany } from '~/context/CompanyContext'
+import { useCompany, useMoney } from '~/context/CompanyContext'
 import { getPosData } from '~/server/dataFetchers'
-import { formatMoney } from '~/utils/currency'
 
 export const Route = createFileRoute('/$companySlug/pos/history')({
   loader: async ({ params }) => getPosData({ data: { companySlug: params.companySlug } }),
@@ -12,6 +11,7 @@ export const Route = createFileRoute('/$companySlug/pos/history')({
 })
 
 function PosHistory() {
+  const { formatMoney } = useMoney()
   const { tickets } = Route.useLoaderData()
   const { activeCompany } = useCompany()
   const [query, setQuery] = useState('')

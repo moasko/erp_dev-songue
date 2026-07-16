@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { ReceiptText } from 'lucide-react'
 import { getFinanceData } from '~/server/dataFetchers'
-import { formatMoney } from '~/utils/currency'
+import { useMoney } from '~/context/CompanyContext'
 
 export const Route = createFileRoute('/$companySlug/invoices')({
   loader: async ({ params }) => getFinanceData({ data: { companySlug: params.companySlug } }),
@@ -9,6 +9,7 @@ export const Route = createFileRoute('/$companySlug/invoices')({
 })
 
 function InvoicesPage() {
+  const { formatMoney } = useMoney()
   const { transactions } = Route.useLoaderData()
   const invoices = transactions.filter((tx: any) => tx.type === 'Income')
 

@@ -9,9 +9,11 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VerifyRouteImport } from './routes/verify'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as CompanySlugRouteImport } from './routes/$companySlug'
 import { Route as IndexRouteImport } from './routes/index'
@@ -77,6 +79,11 @@ import { Route as CompanySlugAccountingProfitLossRouteImport } from './routes/$c
 import { Route as CompanySlugAccountingLedgerRouteImport } from './routes/$companySlug.accounting.ledger'
 import { Route as CompanySlugAccountingChartOfAccountsRouteImport } from './routes/$companySlug.accounting.chart-of-accounts'
 
+const VerifyRoute = VerifyRouteImport.update({
+  id: '/verify',
+  path: '/verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
   path: '/setup',
@@ -90,6 +97,11 @@ const RegisterRoute = RegisterRouteImport.update({
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -439,9 +451,11 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$companySlug': typeof CompanySlugRouteWithChildren
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
   '/register': typeof RegisterRoute
   '/setup': typeof SetupRoute
+  '/verify': typeof VerifyRoute
   '/$companySlug/accounting': typeof CompanySlugAccountingRouteWithChildren
   '/$companySlug/crm': typeof CompanySlugCrmRouteWithChildren
   '/$companySlug/dashboard': typeof CompanySlugDashboardRoute
@@ -507,9 +521,11 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
   '/register': typeof RegisterRoute
   '/setup': typeof SetupRoute
+  '/verify': typeof VerifyRoute
   '/$companySlug/dashboard': typeof CompanySlugDashboardRoute
   '/$companySlug/helpdesk': typeof CompanySlugHelpdeskRoute
   '/$companySlug/invoices': typeof CompanySlugInvoicesRoute
@@ -569,9 +585,11 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$companySlug': typeof CompanySlugRouteWithChildren
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
   '/register': typeof RegisterRoute
   '/setup': typeof SetupRoute
+  '/verify': typeof VerifyRoute
   '/$companySlug/accounting': typeof CompanySlugAccountingRouteWithChildren
   '/$companySlug/crm': typeof CompanySlugCrmRouteWithChildren
   '/$companySlug/dashboard': typeof CompanySlugDashboardRoute
@@ -640,9 +658,11 @@ export interface FileRouteTypes {
     | '/'
     | '/$companySlug'
     | '/login'
+    | '/onboarding'
     | '/privacy'
     | '/register'
     | '/setup'
+    | '/verify'
     | '/$companySlug/accounting'
     | '/$companySlug/crm'
     | '/$companySlug/dashboard'
@@ -708,9 +728,11 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/onboarding'
     | '/privacy'
     | '/register'
     | '/setup'
+    | '/verify'
     | '/$companySlug/dashboard'
     | '/$companySlug/helpdesk'
     | '/$companySlug/invoices'
@@ -769,9 +791,11 @@ export interface FileRouteTypes {
     | '/'
     | '/$companySlug'
     | '/login'
+    | '/onboarding'
     | '/privacy'
     | '/register'
     | '/setup'
+    | '/verify'
     | '/$companySlug/accounting'
     | '/$companySlug/crm'
     | '/$companySlug/dashboard'
@@ -839,15 +863,24 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CompanySlugRoute: typeof CompanySlugRouteWithChildren
   LoginRoute: typeof LoginRoute
+  OnboardingRoute: typeof OnboardingRoute
   PrivacyRoute: typeof PrivacyRoute
   RegisterRoute: typeof RegisterRoute
   SetupRoute: typeof SetupRoute
+  VerifyRoute: typeof VerifyRoute
   InviteTokenRoute: typeof InviteTokenRoute
   ResetTokenRoute: typeof ResetTokenRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/verify': {
+      id: '/verify'
+      path: '/verify'
+      fullPath: '/verify'
+      preLoaderRoute: typeof VerifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/setup': {
       id: '/setup'
       path: '/setup'
@@ -867,6 +900,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -1532,9 +1572,11 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CompanySlugRoute: CompanySlugRouteWithChildren,
   LoginRoute: LoginRoute,
+  OnboardingRoute: OnboardingRoute,
   PrivacyRoute: PrivacyRoute,
   RegisterRoute: RegisterRoute,
   SetupRoute: SetupRoute,
+  VerifyRoute: VerifyRoute,
   InviteTokenRoute: InviteTokenRoute,
   ResetTokenRoute: ResetTokenRoute,
 }

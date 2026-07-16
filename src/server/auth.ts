@@ -4,12 +4,27 @@ import { deleteCookie, getCookie, getRequestHeader, getRequestIP, setCookie } fr
 import { z } from 'zod'
 import { prisma } from './db'
 import { getSessionContext, invalidateSessionCache, invalidateSessionToken } from './access'
+import { mailIsConfigured, sendMail, verificationCodeEmail } from './mail'
 import { hashPassword, verifyPassword } from './password'
 import { isBlocked, recordFailure, recordSuccess, throttle } from './rateLimit'
+import {
+  countryCodes,
+  currencyCodes,
+  fallbackRootDomain,
+  localeCodes,
+  validateSubdomain,
+} from '~/utils/onboarding'
+import { defaultCurrency, defaultLocale } from '~/utils/currency'
 import type { Permission } from '@prisma/client'
 
 const sessionCookieName = 'erp_session'
 const sessionDurationMs = 1000 * 60 * 60 * 24 * 7
+const verificationCodeTtlMs = 1000 * 60 * 15
+const verificationMaxAttempts = 6
+
+function rootDomain() {
+  return (process.env.APP_ROOT_DOMAIN || fallbackRootDomain).trim().replace(/^\.+/, '')
+}
 
 const optionalUrlInput = z.preprocess(
   (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
@@ -26,6 +41,8 @@ type AuthCompany = {
   name: string
   slug: string
   logoUrl?: string | null
+  currency?: string | null
+  locale?: string | null
   roles: string[]
   permissions: string[]
 }
@@ -100,10 +117,14 @@ export const getAuthState = createServerFn({ method: 'GET' }).handler(async () =
 // (cible favorite des scanners automatises).
 let installationConfirmed = false
 
+// L'installation est consideree faite quand une entreprise existe, pas des qu'un
+// utilisateur existe : l'inscription cree le compte a l'etape 1 et l'entreprise
+// seulement a l'etape 2. Compter les utilisateurs verrouillerait /register pour
+// quelqu'un qui abandonne entre les deux etapes.
 async function isInstalled() {
   if (installationConfirmed) return true
-  const usersCount = await prisma.user.count()
-  if (usersCount > 0) installationConfirmed = true
+  const companiesCount = await prisma.company.count()
+  if (companiesCount > 0) installationConfirmed = true
   return installationConfirmed
 }
 
@@ -166,7 +187,7 @@ export const login = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const usersCount = await prisma.user.count()
     if (usersCount === 0) {
-      return { ok: false, message: 'Premiere installation requise.', needsSetup: true, needsTotp: false }
+      return { ok: false, message: 'Premiere installation requise.', needsSetup: true, needsTotp: false, needsVerification: false }
     }
 
     const email = data.email.toLowerCase().trim()
@@ -177,7 +198,7 @@ export const login = createServerFn({ method: 'POST' })
       const { blocked, retryAfterSeconds } = isBlocked(key)
       if (blocked) {
         const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60))
-        return { ok: false, message: `Trop de tentatives. Reessaie dans ${minutes} min.`, needsSetup: false, needsTotp: false }
+        return { ok: false, message: `Trop de tentatives. Reessaie dans ${minutes} min.`, needsSetup: false, needsTotp: false, needsVerification: false }
       }
     }
 
@@ -194,19 +215,33 @@ export const login = createServerFn({ method: 'POST' })
         success: false,
         reason: user ? 'password' : 'unknown_user',
       })
-      return { ok: false, message: 'Email ou mot de passe incorrect.', needsSetup: false, needsTotp: false }
+      return { ok: false, message: 'Email ou mot de passe incorrect.', needsSetup: false, needsTotp: false, needsVerification: false }
+    }
+
+    // Compte cree mais code jamais saisi : on renvoie vers /verify plutot que
+    // d'ouvrir une session, et on repart sur un code neuf.
+    if (!user.emailVerifiedAt) {
+      await issueVerificationCode(user)
+      return {
+        ok: false,
+        message: 'Confirme ton adresse email pour continuer.',
+        needsSetup: false,
+        needsTotp: false,
+        needsVerification: true,
+        email: user.email,
+      }
     }
 
     // Double authentification : exigee si l'utilisateur l'a activee.
     if (user.totpSecret && user.totpEnabledAt) {
       const { verifyTotp } = await import('./totp')
       if (!data.totpCode) {
-        return { ok: false, message: 'Saisis le code de ton application d authentification.', needsSetup: false, needsTotp: true }
+        return { ok: false, message: 'Saisis le code de ton application d authentification.', needsSetup: false, needsTotp: true, needsVerification: false }
       }
       if (!verifyTotp(user.totpSecret, data.totpCode)) {
         rateLimitKeys.forEach(recordFailure)
         await recordLoginEvent({ userId: user.id, email, ip: clientIp, success: false, reason: 'totp' })
-        return { ok: false, message: 'Code de verification invalide.', needsSetup: false, needsTotp: true }
+        return { ok: false, message: 'Code de verification invalide.', needsSetup: false, needsTotp: true, needsVerification: false }
       }
     }
 
@@ -240,84 +275,287 @@ export const login = createServerFn({ method: 'POST' })
       ok: true,
       needsSetup: false,
       needsTotp: false,
-      redirectTo: membership ? `/${membership.company.slug}/dashboard` : '/',
+      needsVerification: false,
+      redirectTo: membership ? `/${membership.company.slug}/dashboard` : '/onboarding',
     }
   })
 
-export const setupOwnerAccount = createServerFn({ method: 'POST' })
+// ─── Inscription en deux etapes ───
+// Etape 1 (/register)  : le compte proprietaire, puis un code envoye par email.
+// Etape 1b (/verify)   : le code confirme l'adresse et ouvre la session.
+// Etape 2 (/onboarding): la boutique (workspace + entreprise).
+//
+// Le compte existe donc en base avant d'avoir la moindre entreprise : tant que
+// `emailVerifiedAt` est nul, il ne peut ni se connecter ni rien creer.
+
+function createVerificationCode() {
+  // 6 chiffres tires du CSPRNG (pas Math.random) : c'est un secret d'authentification.
+  return String(randomBytes(4).readUInt32BE(0) % 1_000_000).padStart(6, '0')
+}
+
+async function issueVerificationCode(user: { id: string; name: string; email: string }) {
+  const code = createVerificationCode()
+
+  // Un seul code valide a la fois : les precedents sont invalides.
+  await prisma.emailVerificationToken.deleteMany({ where: { userId: user.id, consumedAt: null } })
+  await prisma.emailVerificationToken.create({
+    data: {
+      userId: user.id,
+      email: user.email,
+      codeHash: hashToken(code),
+      expiresAt: new Date(Date.now() + verificationCodeTtlMs),
+    },
+  })
+
+  const delivery = await sendMail({ to: user.email, ...verificationCodeEmail({ code, name: user.name }) })
+
+  // Sans transport configure, l'email part dans la console du serveur. On renvoie
+  // alors le code a l'interface pour que l'inscription reste testable en local —
+  // jamais en production, ou il faut un vrai email.
+  const exposeCode = !mailIsConfigured() && process.env.NODE_ENV !== 'production'
+  return { delivered: delivery.delivered, devCode: exposeCode ? code : undefined }
+}
+
+// Cree le compte proprietaire (sans entreprise) et envoie le code de verification.
+export const registerOwner = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({
-      ownerName: z.string().min(2),
-      ownerEmail: z.string().email(),
+      name: z.string().min(2),
+      email: z.string().email(),
       password: z.string().min(10),
-      workspaceName: z.string().min(2),
-      companyName: z.string().min(2),
-      companySlug: z.string().min(2).regex(/^[a-z0-9-]+$/),
     }),
   )
   .handler(async ({ data }) => {
-    const setupIp = getRequestIP({ xForwardedFor: true }) ?? 'unknown'
-    const setupThrottle = throttle(`setup:ip:${setupIp}`, 5, 60 * 60 * 1000)
-    if (!setupThrottle.allowed) {
+    const clientIp = getRequestIP({ xForwardedFor: true }) ?? 'unknown'
+    if (!throttle(`register:ip:${clientIp}`, 5, 60 * 60 * 1000).allowed) {
       return { ok: false, message: 'Trop de tentatives. Reessaie plus tard.' }
     }
 
-    if (await isInstalled()) {
-      return { ok: false, message: 'Cette installation est deja configuree.' }
-    }
-
-    const company = await provisionOwnerWorkspace(data)
-    installationConfirmed = true
-
-    return { ok: true, redirectTo: `/${company.slug}/dashboard` }
-  })
-
-// Inscription publique en self-service : chaque nouveau compte cree son propre
-// espace (workspace + entreprise) et en devient proprietaire. Contrairement a
-// l'installation initiale, les emails et slugs peuvent deja exister, donc on
-// verifie l'unicite et on desambigue les slugs.
-export const registerAccount = createServerFn({ method: 'POST' })
-  .inputValidator(
-    z.object({
-      ownerName: z.string().min(2),
-      ownerEmail: z.string().email(),
-      password: z.string().min(10),
-      workspaceName: z.string().min(2),
-      companyName: z.string().min(2),
-      companySlug: z.string().min(2).regex(/^[a-z0-9-]+$/),
-    }),
-  )
-  .handler(async ({ data }) => {
-    if (!publicRegistrationEnabled()) {
+    // Accessible pour l'installation initiale, ou quand l'inscription publique est ouverte.
+    if ((await isInstalled()) && !publicRegistrationEnabled()) {
       return { ok: false, message: 'Les inscriptions sont desactivees.' }
     }
 
-    const registerIp = getRequestIP({ xForwardedFor: true }) ?? 'unknown'
-    const registerThrottle = throttle(`register:ip:${registerIp}`, 5, 60 * 60 * 1000)
-    if (!registerThrottle.allowed) {
-      return { ok: false, message: 'Trop de tentatives. Reessaie plus tard.' }
-    }
+    const email = data.email.toLowerCase().trim()
+    const existing = await prisma.user.findUnique({ where: { email } })
 
-    // Un compte proprietaire initial doit exister avant d'ouvrir les inscriptions.
-    if (!(await isInstalled())) {
-      return { ok: false, message: 'Configuration initiale requise.', needsSetup: true }
-    }
-
-    const email = data.ownerEmail.toLowerCase().trim()
-    if (await prisma.user.findUnique({ where: { email } })) {
+    if (existing?.emailVerifiedAt) {
       return { ok: false, message: 'Un compte existe deja avec cet email.' }
     }
 
     try {
-      const company = await provisionOwnerWorkspace(data)
-      return { ok: true, redirectTo: `/${company.slug}/dashboard` }
+      // Compte non verifie deja present : l'inscription a ete abandonnee avant le
+      // code. On reprend le meme compte plutot que de bloquer l'adresse a vie.
+      const user = existing
+        ? await prisma.user.update({
+            where: { id: existing.id },
+            data: { name: data.name.trim(), passwordHash: await hashPassword(data.password) },
+          })
+        : await prisma.user.create({
+            data: {
+              name: data.name.trim(),
+              email,
+              passwordHash: await hashPassword(data.password),
+              isOwner: true,
+            },
+          })
+
+      const { delivered, devCode } = await issueVerificationCode(user)
+      return { ok: true, email: user.email, delivered, devCode }
     } catch (error: any) {
-      // Course entre la verification et la creation (email/slug pris entre-temps).
+      // Course entre la verification et la creation (email pris entre-temps).
       if (error?.code === 'P2002') {
         return { ok: false, message: 'Un compte existe deja avec cet email.' }
       }
-      console.error('registerAccount error:', error)
+      console.error('registerOwner error:', error)
       return { ok: false, message: 'Impossible de creer le compte pour le moment.' }
+    }
+  })
+
+export const resendVerificationCode = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ email: z.string().email() }))
+  .handler(async ({ data }) => {
+    const email = data.email.toLowerCase().trim()
+    const clientIp = getRequestIP({ xForwardedFor: true }) ?? 'unknown'
+    for (const key of [`verify:resend:${email}`, `verify:resend:ip:${clientIp}`]) {
+      if (!throttle(key, 5, 60 * 60 * 1000).allowed) {
+        return { ok: false, message: 'Trop de demandes. Reessaie dans une heure.' }
+      }
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } })
+    // Reponse identique si le compte n'existe pas ou est deja verifie : /verify ne
+    // doit pas servir a decouvrir quelles adresses sont inscrites.
+    if (!user || user.emailVerifiedAt) {
+      return { ok: true, delivered: true, devCode: undefined }
+    }
+
+    const { delivered, devCode } = await issueVerificationCode(user)
+    return { ok: true, delivered, devCode }
+  })
+
+// Valide le code, marque l'email comme verifie et ouvre la session.
+export const verifyEmailCode = createServerFn({ method: 'POST' })
+  .inputValidator(
+    z.object({
+      email: z.string().email(),
+      code: z.string().regex(/^[0-9]{6}$/),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const email = data.email.toLowerCase().trim()
+    const clientIp = getRequestIP({ xForwardedFor: true }) ?? 'unknown'
+    const rateLimitKeys = [`verify:email:${email}`, `verify:ip:${clientIp}`]
+
+    for (const key of rateLimitKeys) {
+      const { blocked, retryAfterSeconds } = isBlocked(key)
+      if (blocked) {
+        const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60))
+        return { ok: false, message: `Trop de tentatives. Reessaie dans ${minutes} min.` }
+      }
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } })
+    if (!user) {
+      rateLimitKeys.forEach(recordFailure)
+      return { ok: false, message: 'Code invalide ou expire.' }
+    }
+    if (user.emailVerifiedAt) {
+      return { ok: false, message: 'Cette adresse est deja verifiee.', alreadyVerified: true }
+    }
+
+    const token = await prisma.emailVerificationToken.findFirst({
+      where: { userId: user.id, consumedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    if (!token) {
+      rateLimitKeys.forEach(recordFailure)
+      return { ok: false, message: 'Code expire. Demande un nouveau code.', expired: true }
+    }
+
+    // Un code a 6 chiffres se devine : au-dela de quelques essais on le brule.
+    if (token.attempts >= verificationMaxAttempts) {
+      await prisma.emailVerificationToken.update({ where: { id: token.id }, data: { consumedAt: new Date() } })
+      return { ok: false, message: 'Trop d essais. Demande un nouveau code.', expired: true }
+    }
+
+    if (token.codeHash !== hashToken(data.code)) {
+      rateLimitKeys.forEach(recordFailure)
+      await prisma.emailVerificationToken.update({ where: { id: token.id }, data: { attempts: { increment: 1 } } })
+      return { ok: false, message: 'Code invalide ou expire.' }
+    }
+
+    rateLimitKeys.forEach(recordSuccess)
+    await prisma.$transaction([
+      prisma.emailVerificationToken.update({ where: { id: token.id }, data: { consumedAt: new Date() } }),
+      prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } }),
+    ])
+
+    await createSessionForUser(user.id)
+
+    // Un compte invite peut deja avoir une entreprise : inutile de lui faire creer
+    // une boutique, il repart sur son tableau de bord.
+    const membership = await prisma.companyMembership.findFirst({
+      where: { userId: user.id, status: 'ACTIVE' },
+      include: { company: true },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    return { ok: true, redirectTo: membership ? `/${membership.company.slug}/dashboard` : '/onboarding' }
+  })
+
+// Etat de l'etape 2 : qui est connecte, a-t-il deja une boutique, quel domaine afficher.
+export const getOnboardingState = createServerFn({ method: 'GET' }).handler(async () => {
+  const auth = await readAuthState()
+  return {
+    user: auth.user,
+    firstCompanySlug: auth.companies[0]?.slug ?? null,
+    rootDomain: rootDomain(),
+  }
+})
+
+export const checkSubdomainAvailability = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ subdomain: z.string().min(1).max(40) }))
+  .handler(async ({ data }) => {
+    const auth = await readAuthState()
+    if (!auth.user) return { ok: false, available: false, message: 'Session expiree.' }
+
+    const subdomain = data.subdomain.toLowerCase().trim()
+    const validation = validateSubdomain(subdomain)
+    if (!validation.ok) return { ok: true, available: false, message: validation.message }
+
+    const taken = await prisma.company.findUnique({ where: { subdomain } })
+    return {
+      ok: true,
+      available: !taken,
+      subdomain,
+      rootDomain: rootDomain(),
+      message: taken ? 'Ce sous-domaine est deja pris.' : undefined,
+    }
+  })
+
+// Etape 2 : cree le workspace et la premiere entreprise du proprietaire verifie.
+export const completeOnboarding = createServerFn({ method: 'POST' })
+  .inputValidator(
+    z.object({
+      companyName: z.string().min(2).max(80),
+      subdomain: z.string().min(3).max(40),
+      country: z.enum(countryCodes as [string, ...Array<string>]),
+      currency: z.enum(currencyCodes as [string, ...Array<string>]),
+      locale: z.enum(localeCodes as [string, ...Array<string>]),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const auth = await readAuthState()
+    if (!auth.user) return { ok: false, message: 'Session expiree. Reconnecte-toi.' }
+    if (auth.companies.length > 0) {
+      return { ok: false, message: 'Une boutique existe deja pour ce compte.', redirectTo: `/${auth.companies[0].slug}/dashboard` }
+    }
+
+    // La session n'existe qu'apres verification, mais l'etape 2 cree les donnees :
+    // on revalide plutot que de faire confiance au parcours.
+    const user = await prisma.user.findUnique({ where: { id: auth.user.id } })
+    if (!user?.emailVerifiedAt) return { ok: false, message: 'Adresse email non verifiee.' }
+
+    const subdomain = data.subdomain.toLowerCase().trim()
+    const validation = validateSubdomain(subdomain)
+    if (!validation.ok) return { ok: false, message: validation.message }
+
+    try {
+      await ensureCoreDefinitions()
+
+      const workspace =
+        (await prisma.workspace.findFirst({ where: { ownerId: user.id } })) ??
+        (await prisma.workspace.create({
+          data: {
+            name: data.companyName.trim(),
+            slug: await uniqueSlug(slugify(data.companyName), 'workspace'),
+            ownerId: user.id,
+          },
+        }))
+
+      const company = await createCompanyForOwner({
+        workspaceId: workspace.id,
+        ownerId: user.id,
+        name: data.companyName.trim(),
+        slug: await uniqueSlug(subdomain, 'company'),
+        subdomain,
+        country: data.country,
+        currency: data.currency,
+        locale: data.locale,
+      })
+
+      installationConfirmed = true
+      invalidateSessionCache()
+      return { ok: true, redirectTo: `/${company.slug}/dashboard` }
+    } catch (error: any) {
+      // Course entre la verification de disponibilite et la creation.
+      if (error?.code === 'P2002') {
+        return { ok: false, message: 'Ce sous-domaine vient d etre pris. Choisis-en un autre.' }
+      }
+      console.error('completeOnboarding error:', error)
+      return { ok: false, message: 'Impossible de creer la boutique pour le moment.' }
     }
   })
 
@@ -428,6 +666,8 @@ export const getCompanyAdministration = createServerFn({ method: 'GET' })
             id: company.id,
             name: company.name,
             slug: company.slug,
+            currency: company.currency ?? defaultCurrency,
+            locale: company.locale ?? defaultLocale,
             legalName: company.legalName ?? '',
             logoUrl: company.logoUrl ?? '',
             address: company.address ?? '',
@@ -515,6 +755,8 @@ export const updateCompanyProfile = createServerFn({ method: 'POST' })
     z.object({
       companySlug: z.string().min(1),
       name: z.string().min(2),
+      currency: z.enum(currencyCodes as [string, ...Array<string>]),
+      locale: z.enum(localeCodes as [string, ...Array<string>]),
       legalName: z.string().optional(),
       logoUrl: optionalUrlInput,
       address: z.string().optional(),
@@ -539,6 +781,8 @@ export const updateCompanyProfile = createServerFn({ method: 'POST' })
         where: { id: company.id },
         data: {
           name: data.name.trim(),
+          currency: data.currency,
+          locale: data.locale,
           legalName: data.legalName?.trim() || null,
           logoUrl: data.logoUrl?.trim() || null,
           address: data.address?.trim() || null,
@@ -591,6 +835,8 @@ export const updateCompanyProfile = createServerFn({ method: 'POST' })
         id: updated.id,
         name: updated.name,
         slug: updated.slug,
+        currency: updated.currency ?? defaultCurrency,
+        locale: updated.locale ?? defaultLocale,
         legalName: updated.legalName ?? '',
         logoUrl: updated.logoUrl ?? '',
         address: updated.address ?? '',
@@ -639,46 +885,6 @@ export const createRole = createServerFn({ method: 'POST' })
   })
 
 
-// Cree le proprietaire, son workspace et sa premiere entreprise, puis ouvre une
-// session. Partage par l'installation initiale et l'inscription publique.
-async function provisionOwnerWorkspace(input: {
-  ownerName: string
-  ownerEmail: string
-  password: string
-  workspaceName: string
-  companyName: string
-  companySlug: string
-}) {
-  await ensureCoreDefinitions()
-
-  const owner = await prisma.user.create({
-    data: {
-      name: input.ownerName.trim(),
-      email: input.ownerEmail.toLowerCase().trim(),
-      passwordHash: await hashPassword(input.password),
-      isOwner: true,
-    },
-  })
-
-  const workspace = await prisma.workspace.create({
-    data: {
-      name: input.workspaceName.trim(),
-      slug: await uniqueSlug(slugify(input.workspaceName), 'workspace'),
-      ownerId: owner.id,
-    },
-  })
-
-  const company = await createCompanyForOwner({
-    workspaceId: workspace.id,
-    ownerId: owner.id,
-    name: input.companyName.trim(),
-    slug: await uniqueSlug(input.companySlug, 'company'),
-  })
-
-  await createSessionForUser(owner.id)
-  return company
-}
-
 // Renvoie un slug libre en suffixant un compteur si la base contient deja le slug.
 async function uniqueSlug(base: string, kind: 'workspace' | 'company') {
   const root = base && base.length > 0 ? base : kind === 'company' ? 'entreprise' : 'espace'
@@ -717,6 +923,10 @@ async function createCompanyForOwner(input: {
   ownerId: string
   name: string
   slug: string
+  subdomain?: string
+  country?: string
+  currency?: string
+  locale?: string
   legalName?: string
   logoUrl?: string
   address?: string
@@ -730,6 +940,10 @@ async function createCompanyForOwner(input: {
       workspaceId: input.workspaceId,
       name: input.name,
       slug: input.slug,
+      subdomain: input.subdomain || null,
+      country: input.country || null,
+      currency: input.currency || null,
+      locale: input.locale || null,
       legalName: input.legalName || null,
       logoUrl: input.logoUrl || null,
       address: input.address || null,

@@ -3,7 +3,7 @@ import { CreditCard, ReceiptText, Smartphone, Wallet } from 'lucide-react'
 import { useState } from 'react'
 import { DateRangeFilter, getDateRangeBounds, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 import { getPosReportData } from '~/server/dataFetchers'
-import { formatMoney } from '~/utils/currency'
+import { useMoney } from '~/context/CompanyContext'
 
 export const Route = createFileRoute('/$companySlug/pos/sales-report')({
   loader: async ({ params }) => {
@@ -14,6 +14,7 @@ export const Route = createFileRoute('/$companySlug/pos/sales-report')({
 })
 
 function PosSalesReport() {
+  const { formatMoney } = useMoney()
   const { companySlug } = Route.useParams()
   const initialReport = Route.useLoaderData()
   const [datePreset, setDatePreset] = useState<DatePreset>('today')

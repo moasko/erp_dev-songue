@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Banknote, CreditCard, Landmark } from 'lucide-react'
 import { getFinanceData } from '~/server/dataFetchers'
-import { formatMoney } from '~/utils/currency'
+import { useMoney } from '~/context/CompanyContext'
 
 export const Route = createFileRoute('/$companySlug/finance/bank-accounts')({
   loader: async ({ params }) => getFinanceData({ data: { companySlug: params.companySlug } }),
@@ -9,6 +9,7 @@ export const Route = createFileRoute('/$companySlug/finance/bank-accounts')({
 })
 
 function BankAccountsPage() {
+  const { formatMoney } = useMoney()
   const { accounts } = Route.useLoaderData()
   const total = accounts.reduce((sum: number, account: any) => sum + account.balance, 0)
 
@@ -42,6 +43,7 @@ function AccountStat({ title, value }: { title: string; value: string }) {
 }
 
 function AccountCard({ account }: { account: any }) {
+  const { formatMoney } = useMoney()
   const Icon = account.type === 'Cash' ? Banknote : account.type === 'CreditCard' ? CreditCard : Landmark
 
   return (

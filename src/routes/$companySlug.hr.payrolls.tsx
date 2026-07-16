@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Banknote, ReceiptText, Users } from 'lucide-react'
 import { getHrData } from '~/server/dataFetchers'
-import { formatMoney } from '~/utils/currency'
+import { useMoney } from '~/context/CompanyContext'
 
 export const Route = createFileRoute('/$companySlug/hr/payrolls')({
   loader: async ({ params }) => getHrData({ data: { companySlug: params.companySlug } }),
@@ -9,6 +9,7 @@ export const Route = createFileRoute('/$companySlug/hr/payrolls')({
 })
 
 function PayrollsPage() {
+  const { formatMoney } = useMoney()
   const { employees } = Route.useLoaderData()
   const active = employees.filter((employee: any) => employee.status !== 'Terminated')
   const payroll = active.reduce((sum: number, employee: any) => sum + employee.salary, 0)
