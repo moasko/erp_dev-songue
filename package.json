@@ -22,6 +22,7 @@
     "dotenv": "^17.4.2",
     "lucide-react": "^1.16.0",
     "pg": "^8.22.0",
+    "prisma": "^7.8.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.6.0",
@@ -36,9 +37,11 @@
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^6.0.1",
     "nitro": "^3.0.260311-beta",
-    "prisma": "^7.8.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
     "vite": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=22.12"
   }
 }

@@ -1,0 +1,7 @@
+# Les scripts shell doivent rester en LF, quel que soit le poste qui les commite.
+# En CRLF, le shebang d'un script copie dans une image Docker echoue avec un
+# "no such file or directory" trompeur (c'est l'interpreteur qui est introuvable,
+# pas le fichier).
+*.sh text eol=lf
+docker-entrypoint.sh text eol=lf
+Dockerfile text eol=lf

@@ -1,0 +1,32 @@
+# Secrets : ne doivent JAMAIS entrer dans l'image. Les variables sont fournies a
+# l'execution par Dokploy. Sans cette exclusion, `COPY . .` embarquerait .env et
+# les cles resteraient lisibles dans les couches de l'image.
+.env
+.env.*
+!.env.example
+
+# Reinstalle/reconstruit dans l'image (et dependances natives incompatibles entre
+# la machine de dev et Linux).
+node_modules
+.output
+.nitro
+.vite
+dist
+
+# Sans interet pour le build
+.git
+.gitignore
+.github
+.claude
+.vscode
+.idea
+docs
+*.md
+!README.md
+*.log
+npm-debug.log*
+prisma/dev.db
+_create_account.ts
+docker-compose.yml
+Dockerfile
+.dockerignore
