@@ -24,7 +24,7 @@
 
   code {
     @apply rounded px-1.5 py-0.5 font-mono text-sm;
-    background: rgba(4, 224, 104, 0.12);
+    background: rgba(0, 254, 104, 0.12);
     color: var(--app-accent);
   }
 
@@ -36,12 +36,12 @@
 /* ─── Semantic badge tokens ─── */
 /* Couleurs de la marque Icomgest, relevees sur le logo :
      bleu nuit #0a1728  (le "i" et l'arc du "G")
-     vert      #04e068  (le "G")
+     vert      #00fe68  (le "G")
 
-   Le vert ne peut jamais porter de texte blanc : le contraste tombe a 1,77:1, tres
-   loin du minimum de 4,5:1. Il porte donc toujours du texte bleu nuit (10,18:1).
+   Le vert ne peut jamais porter de texte blanc : le contraste tombe a 1,37:1, tres
+   loin du minimum de 4,5:1. Il porte donc toujours du texte bleu nuit (13,19:1).
    Et comme texte sur fond clair il est tout aussi illisible : le theme clair
-   utilise une version assombrie (#04853c, 4,75:1) pour les liens et accents. */
+   utilise une version assombrie (#048038, 5,06:1) pour les liens et accents. */
 :root {
   color-scheme: dark;
   --app-bg: #060e1a;
@@ -50,23 +50,23 @@
   --app-panel: #0c1a2b;
   --app-panel-soft: #102132;
   --app-panel-raised: #16293c;
-  --app-border: rgba(4, 224, 104, 0.14);
-  --app-border-strong: rgba(4, 224, 104, 0.3);
+  --app-border: rgba(0, 254, 104, 0.14);
+  --app-border-strong: rgba(0, 254, 104, 0.3);
   --app-text: #e8f1ff;
   --app-muted: #8fa3bb;
   --app-faint: #64788f;
-  --app-accent: #04e068;
-  --app-accent-hover: #03c25a;
+  --app-accent: #00fe68;
+  --app-accent-hover: #00e25d;
   --app-success: #00e599;
   --app-success-soft: rgba(0, 229, 153, 0.12);
-  --app-glow-a: rgba(4, 224, 104, 0.12);
-  --app-glow-b: rgba(4, 224, 104, 0.06);
+  --app-glow-a: rgba(0, 254, 104, 0.12);
+  --app-glow-b: rgba(0, 254, 104, 0.06);
   --app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.16);
   --app-shadow-md: 0 2px 6px rgba(0, 0, 0, 0.14);
   --app-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.18);
-  /* Bouton vert + texte bleu nuit : 10,18:1. */
-  --app-primary-bg: #04e068;
-  --app-primary-bg-hover: #03c25a;
+  /* Bouton vert + texte bleu nuit : 13,19:1. */
+  --app-primary-bg: #00fe68;
+  --app-primary-bg-hover: #00e25d;
   --app-primary-text: #0a1728;
   /* Status */
   --badge-good-bg: #f0fdf4;
@@ -101,13 +101,13 @@ html.theme-light,
   --app-text: #0a1728;
   --app-muted: #475569;
   --app-faint: #94a3b8;
-  /* Vert assombri : le #04e068 du logo tombe a 1,77:1 en texte sur blanc. */
-  --app-accent: #04853c;
-  --app-accent-hover: #047034;
-  --app-success: #04853c;
+  /* Vert assombri : le #00fe68 du logo tombe a 1,37:1 en texte sur blanc. */
+  --app-accent: #048038;
+  --app-accent-hover: #046e30;
+  --app-success: #048038;
   --app-success-soft: #d1fae5;
-  --app-glow-a: rgba(4, 224, 104, 0.08);
-  --app-glow-b: rgba(4, 224, 104, 0.05);
+  --app-glow-a: rgba(0, 254, 104, 0.08);
+  --app-glow-b: rgba(0, 254, 104, 0.05);
   --app-shadow-sm: 0 1px 2px rgba(10, 23, 40, 0.04);
   --app-shadow-md: 0 1px 3px rgba(10, 23, 40, 0.05);
   --app-shadow-lg: 0 2px 8px rgba(10, 23, 40, 0.06);
@@ -120,12 +120,12 @@ html.theme-light,
 
 @layer base {
   ::selection {
-    background: rgba(4, 224, 104, 0.34);
+    background: rgba(0, 254, 104, 0.34);
     color: #0a1728;
   }
 
   * {
-    scrollbar-color: rgba(4, 224, 104, 0.34) transparent;
+    scrollbar-color: rgba(0, 254, 104, 0.34) transparent;
   }
 
   input,
@@ -318,8 +318,8 @@ html:not(.theme-light) .dark\:text-emerald-300 {
 
 .neon-grid {
   background-image:
-    linear-gradient(rgba(4, 224, 104, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(4, 224, 104, 0.06) 1px, transparent 1px);
+    linear-gradient(rgba(0, 254, 104, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 254, 104, 0.06) 1px, transparent 1px);
   background-size: 44px 44px;
 }
 
