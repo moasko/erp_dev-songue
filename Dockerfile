@@ -30,8 +30,13 @@ RUN npm run build
 # ─── Runtime ───
 FROM base AS runtime
 
+# Port 8080 plutot que 3000 : sur un hote Dokploy, le port 3000 est deja pris par
+# le tableau de bord Dokploy lui-meme. Tant qu'on passe par le reverse proxy, il
+# n'y a pas de conflit (le conteneur a son propre reseau), mais publier 3000 sur
+# l'hote ferait echouer le demarrage avec "port is already allocated".
+# Surchargeable via la variable PORT.
 ENV NODE_ENV=production \
-    PORT=3000 \
+    PORT=8080 \
     HOST=0.0.0.0
 
 # Certificats requis pour les appels TLS sortants (Postgres, R2, Resend).
@@ -56,7 +61,7 @@ RUN chmod +x docker-entrypoint.sh
 # L'application ne doit pas tourner en root.
 USER node
 
-EXPOSE 3000
+EXPOSE 8080
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["node", ".output/server/index.mjs"]

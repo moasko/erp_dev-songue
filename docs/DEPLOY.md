@@ -49,7 +49,7 @@ uniquement de l'environnement — ce que Dokploy fournit.
 | `MAIL_FROM` | non | Expediteur, domaine verifie chez Resend. |
 | `R2_*` | non | Upload d'images. Sans elles, les champs image retombent sur la saisie d'URL. Voir `R2.md`. |
 | `DATABASE_POOL_MAX` | non | Taille du pool (defaut 10). |
-| `PORT` | non | Defaut 3000 (deja expose par l'image). |
+| `PORT` | non | Defaut 8080 (deja expose par l'image). Le port 3000 de l'hote est pris par Dokploy lui-meme. |
 | `RUN_MIGRATIONS` | non | `"false"` pour ne pas migrer au demarrage. |
 
 `APP_BASE_URL` merite une explication : pour construire un lien absolu, le
@@ -81,7 +81,7 @@ main.
 ## Verifier apres deploiement
 
 1. Les logs doivent afficher `application des migrations...` puis
-   `Listening on: http://0.0.0.0:3000/`.
+   `Listening on: http://0.0.0.0:8080/`.
 2. `GET /` doit renvoyer une redirection (307) et non une erreur 500 : une 500 a
    ce stade signifie presque toujours un `DATABASE_URL` absent ou faux.
 3. Creer le premier compte via `/register` (accessible tant qu'aucune entreprise
