@@ -70,7 +70,7 @@ export function verifyTotp(secret: string, code: string, windowSteps = 1) {
   return valid
 }
 
-export function totpUri(secret: string, accountEmail: string, issuer = 'Gestion PME') {
+export function totpUri(secret: string, accountEmail: string, issuer = 'Icomgest') {
   const label = `${encodeURIComponent(issuer)}:${encodeURIComponent(accountEmail)}`
   return `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`
 }

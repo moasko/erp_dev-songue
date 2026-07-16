@@ -24,8 +24,8 @@
 
   code {
     @apply rounded px-1.5 py-0.5 font-mono text-sm;
-    background: rgba(255, 69, 0, 0.12);
-    color: #ffb199;
+    background: rgba(4, 224, 104, 0.12);
+    color: var(--app-accent);
   }
 
   .using-mouse * {
@@ -34,31 +34,40 @@
 }
 
 /* ─── Semantic badge tokens ─── */
+/* Couleurs de la marque Icomgest, relevees sur le logo :
+     bleu nuit #0a1728  (le "i" et l'arc du "G")
+     vert      #04e068  (le "G")
+
+   Le vert ne peut jamais porter de texte blanc : le contraste tombe a 1,77:1, tres
+   loin du minimum de 4,5:1. Il porte donc toujours du texte bleu nuit (10,18:1).
+   Et comme texte sur fond clair il est tout aussi illisible : le theme clair
+   utilise une version assombrie (#04853c, 4,75:1) pour les liens et accents. */
 :root {
   color-scheme: dark;
-  --app-bg: #070b0d;
-  --app-bg-start: #070b0d;
-  --app-bg-mid: #080d10;
-  --app-panel: #0d1417;
-  --app-panel-soft: #10191d;
-  --app-panel-raised: #121d22;
-  --app-border: rgba(255, 111, 59, 0.14);
-  --app-border-strong: rgba(255, 111, 59, 0.3);
-  --app-text: #e8fff7;
-  --app-muted: #8aa29b;
-  --app-faint: #5f7770;
-  --app-accent: orangered;
-  --app-accent-hover: #e13d00;
+  --app-bg: #060e1a;
+  --app-bg-start: #060e1a;
+  --app-bg-mid: #08131f;
+  --app-panel: #0c1a2b;
+  --app-panel-soft: #102132;
+  --app-panel-raised: #16293c;
+  --app-border: rgba(4, 224, 104, 0.14);
+  --app-border-strong: rgba(4, 224, 104, 0.3);
+  --app-text: #e8f1ff;
+  --app-muted: #8fa3bb;
+  --app-faint: #64788f;
+  --app-accent: #04e068;
+  --app-accent-hover: #03c25a;
   --app-success: #00e599;
   --app-success-soft: rgba(0, 229, 153, 0.12);
-  --app-glow-a: rgba(255, 69, 0, 0.15);
-  --app-glow-b: rgba(255, 123, 0, 0.08);
+  --app-glow-a: rgba(4, 224, 104, 0.12);
+  --app-glow-b: rgba(4, 224, 104, 0.06);
   --app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.16);
   --app-shadow-md: 0 2px 6px rgba(0, 0, 0, 0.14);
   --app-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.18);
-  --app-primary-bg: orangered;
-  --app-primary-bg-hover: #e13d00;
-  --app-primary-text: #ffffff;
+  /* Bouton vert + texte bleu nuit : 10,18:1. */
+  --app-primary-bg: #04e068;
+  --app-primary-bg-hover: #03c25a;
+  --app-primary-text: #0a1728;
   /* Status */
   --badge-good-bg: #f0fdf4;
   --badge-good-text: #15803d;
@@ -89,31 +98,34 @@ html.theme-light,
   --app-panel-raised: #f1f5f9;
   --app-border: #e2e8f0;
   --app-border-strong: #cbd5e1;
-  --app-text: #020617;
+  --app-text: #0a1728;
   --app-muted: #475569;
   --app-faint: #94a3b8;
-  --app-accent: orangered;
-  --app-accent-hover: #e13d00;
-  --app-success: #047857;
+  /* Vert assombri : le #04e068 du logo tombe a 1,77:1 en texte sur blanc. */
+  --app-accent: #04853c;
+  --app-accent-hover: #047034;
+  --app-success: #04853c;
   --app-success-soft: #d1fae5;
-  --app-glow-a: rgba(255, 69, 0, 0.1);
-  --app-glow-b: rgba(255, 123, 0, 0.06);
-  --app-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --app-shadow-md: 0 1px 3px rgba(15, 23, 42, 0.05);
-  --app-shadow-lg: 0 2px 8px rgba(15, 23, 42, 0.06);
-  --app-primary-bg: orangered;
-  --app-primary-bg-hover: #e13d00;
+  --app-glow-a: rgba(4, 224, 104, 0.08);
+  --app-glow-b: rgba(4, 224, 104, 0.05);
+  --app-shadow-sm: 0 1px 2px rgba(10, 23, 40, 0.04);
+  --app-shadow-md: 0 1px 3px rgba(10, 23, 40, 0.05);
+  --app-shadow-lg: 0 2px 8px rgba(10, 23, 40, 0.06);
+  /* Bouton bleu nuit + texte blanc : 18:1. Le vif du logo ne peut pas tenir ce
+     role sur fond clair sans casser la lisibilite. */
+  --app-primary-bg: #0a1728;
+  --app-primary-bg-hover: #16273d;
   --app-primary-text: #ffffff;
 }
 
 @layer base {
   ::selection {
-    background: rgba(255, 69, 0, 0.34);
-    color: #ffffff;
+    background: rgba(4, 224, 104, 0.34);
+    color: #0a1728;
   }
 
   * {
-    scrollbar-color: rgba(255, 111, 59, 0.34) transparent;
+    scrollbar-color: rgba(4, 224, 104, 0.34) transparent;
   }
 
   input,
@@ -124,7 +136,7 @@ html.theme-light,
 
   input::placeholder,
   textarea::placeholder {
-    color: #60766f;
+    color: var(--app-faint);
   }
 }
 
@@ -306,8 +318,8 @@ html:not(.theme-light) .dark\:text-emerald-300 {
 
 .neon-grid {
   background-image:
-    linear-gradient(rgba(255, 111, 59, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 111, 59, 0.06) 1px, transparent 1px);
+    linear-gradient(rgba(4, 224, 104, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(4, 224, 104, 0.06) 1px, transparent 1px);
   background-size: 44px 44px;
 }
 

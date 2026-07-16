@@ -35,7 +35,7 @@ export function mailIsConfigured() {
 }
 
 function fromAddress() {
-  return process.env.MAIL_FROM || 'Gestion PME <onboarding@resend.dev>'
+  return process.env.MAIL_FROM || 'Icomgest <onboarding@resend.dev>'
 }
 
 export async function sendMail(message: MailMessage): Promise<MailResult> {
@@ -113,7 +113,7 @@ export function invitationEmail(input: {
     text: [
       'Bonjour,',
       '',
-      `${input.inviterName} vous invite à rejoindre ${input.companyName} sur Gestion PME`,
+      `${input.inviterName} vous invite à rejoindre ${input.companyName} sur Icomgest`,
       `en tant que « ${input.roleName} ».`,
       '',
       'Créez votre compte ici :',
@@ -122,7 +122,7 @@ export function invitationEmail(input: {
       'Ce lien expire dans 7 jours.',
       "Si vous n'attendiez pas cette invitation, ignorez ce message.",
       '',
-      'Gestion PME',
+      'Icomgest',
     ].join('\n'),
   }
 }
@@ -144,7 +144,7 @@ export function passwordResetEmail(input: {
       "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message :",
       "votre mot de passe actuel reste valable.",
       '',
-      'Gestion PME',
+      'Icomgest',
     ].join('\n'),
   }
 }
@@ -162,7 +162,7 @@ export function verificationCodeEmail(input: { code: string; name: string }): Om
       'Ce code expire dans 15 minutes.',
       "Si vous n'etes pas a l'origine de cette demande, ignorez ce message.",
       '',
-      'Gestion PME',
+      'Icomgest',
     ].join('\n'),
   }
 }

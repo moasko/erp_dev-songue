@@ -15,7 +15,7 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       ...seo({
-        title: 'Gestion PME',
+        title: 'Icomgest',
         description: 'Application web simple pour ventes, caisse, stock, clients et factures.',
       }),
     ],
