@@ -68,7 +68,9 @@ function PurchasesDashboard() {
         <Metric title="Stock a commander" value={stockAlerts.length.toString()} detail="Produits sous seuil" icon={PackageCheck} alert={stockAlerts.length > 0} />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1fr_380px]">
+      {/* grid-cols-1 explicite : sans lui, la piste implicite est dimensionnee
+          par le contenu et deborde de l'ecran en mobile. */}
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="neon-surface overflow-hidden rounded">
           <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
             <div>

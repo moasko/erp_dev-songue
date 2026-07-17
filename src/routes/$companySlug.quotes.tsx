@@ -1,12 +1,14 @@
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import {
   BadgeCheck,
-  Building2,
   Check,
   FileCheck2,
+  FileDown,
+  Mail,
   Palette,
   Plus,
   Printer,
+  ReceiptText,
   Save,
   Search,
   Send,
@@ -16,16 +18,19 @@ import {
 } from 'lucide-react'
 import * as React from 'react'
 import { getQuoteData } from '~/server/dataFetchers'
-import { createQuote, saveQuoteSettings, updateQuoteStatus } from '~/server/operations'
+import { convertQuoteToInvoice, createQuote, saveQuoteSettings, sendDocumentByEmail, updateQuoteStatus } from '~/server/operations'
 import { useMoney } from '~/context/CompanyContext'
 import { ImageUploadField } from '~/components/ImageUploadField'
+import { DocumentPrint } from '~/components/DocumentPrint'
+import { computeDocumentTotals } from '~/utils/documentTotals'
+import { downloadCsv } from '~/utils/csvExport'
 
 export const Route = createFileRoute('/$companySlug/quotes')({
   loader: async ({ params }) => getQuoteData({ data: { companySlug: params.companySlug } }),
   component: QuotesPage,
 })
 
-type Modal = 'quote' | 'settings' | null
+type Modal = 'quote' | 'settings' | 'preview' | null
 type QuoteStatus = 'Draft' | 'Sent' | 'Accepted' | 'Rejected' | 'Expired'
 type StatusFilter = QuoteStatus | 'All'
 type QuoteSort = 'updated' | 'validUntil' | 'amountDesc' | 'amountAsc'
@@ -34,6 +39,8 @@ type QuoteLineForm = {
   description: string
   quantity: string
   unitPrice: string
+  // Vide = la ligne suit le taux de TVA par defaut du devis
+  vatRate: string
 }
 
 const statusLabels: Record<string, string> = {
@@ -56,6 +63,7 @@ function QuotesPage() {
   const { formatMoney } = useMoney()
   const { companySlug } = Route.useParams()
   const router = useRouter()
+  const navigate = useNavigate()
   const data = Route.useLoaderData()
 
   const [quotes, setQuotes] = React.useState<any[]>(data.quotes)
@@ -109,6 +117,56 @@ function QuotesPage() {
     setMessage(`Devis ${updated.reference} marque: ${statusLabels[status]}.`)
   }
 
+  async function invoiceQuote(quoteId: string) {
+    const quote = quotes.find((candidate) => candidate.id === quoteId)
+    if (!quote) return
+    if (!window.confirm(`Creer la facture correspondant au devis ${quote.reference} ?`)) return
+    try {
+      const invoice = await convertQuoteToInvoice({ data: { companySlug, quoteId } })
+      setMessage(`Facture ${invoice.number} creee a partir du devis ${quote.reference}.`)
+      await refresh()
+      await navigate({ to: '/$companySlug/invoices', params: { companySlug } })
+    } catch (error: any) {
+      setMessage(error?.message || 'Impossible de facturer ce devis.')
+    } finally {
+      // Le resultat (banniere de confirmation ou d'erreur) s'affiche sur la
+      // page : on referme l'apercu pour qu'il soit visible.
+      setActiveModal(null)
+    }
+  }
+
+  async function emailQuote(quoteId: string) {
+    const quote = quotes.find((candidate) => candidate.id === quoteId)
+    if (!quote) return
+    const to = window.prompt('Envoyer le devis a :', quote.customer?.email ?? '')
+    if (to === null) return
+    try {
+      const result = await sendDocumentByEmail({ data: { companySlug, kind: 'quote', documentId: quoteId, to: to.trim() || undefined } })
+      setQuotes((current) => current.map((candidate) => candidate.id === quoteId ? result.document : candidate))
+      setMessage(result.delivered
+        ? `Devis ${quote.reference} envoye par email.`
+        : `Aucun transport email configure : le message est visible dans la console du serveur. Renseigne RESEND_API_KEY pour envoyer reellement.`)
+    } catch (error: any) {
+      setMessage(error?.message || 'Impossible d\'envoyer le devis.')
+    } finally {
+      setActiveModal(null)
+    }
+  }
+
+  function exportQuotesCsv() {
+    downloadCsv(`devis-${companySlug}.csv`, filteredQuotes, [
+      { header: 'Reference', value: (quote: any) => quote.reference },
+      { header: 'Client', value: (quote: any) => quote.customer?.name ?? 'Client libre' },
+      { header: 'Objet', value: (quote: any) => quote.title },
+      { header: 'Statut', value: (quote: any) => statusLabels[quote.status] ?? quote.status },
+      { header: 'Emission', value: (quote: any) => formatDate(quote.issueDate) },
+      { header: 'Validite', value: (quote: any) => formatDate(quote.validUntil) },
+      { header: 'Total HT', value: (quote: any) => quote.subtotalCents },
+      { header: 'Total TTC', value: (quote: any) => quote.totalCents },
+      { header: 'Devise', value: (quote: any) => quote.currency },
+    ])
+  }
+
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <div className="no-print mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -144,11 +202,18 @@ function QuotesPage() {
         <Metric icon={Palette} label="Identite" value={settings.legalName || data.company.name} detail="Modele entreprise" />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_480px]">
-        <section className="no-print overflow-hidden rounded border border-slate-200 bg-white">
+      <section className="no-print min-w-0 overflow-hidden rounded border border-slate-200 bg-white">
           <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
             <h2 className="font-bold text-slate-950">Gestion des devis</h2>
-            <span className="text-xs font-semibold text-slate-500">{filteredQuotes.length}/{quotes.length} document{quotes.length > 1 ? 's' : ''}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-semibold text-slate-500">{filteredQuotes.length}/{quotes.length} document{quotes.length > 1 ? 's' : ''}</span>
+              {quotes.length ? (
+                <button onClick={exportQuotesCsv} className="inline-flex items-center gap-1.5 rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                  <FileDown className="size-3.5" />
+                  CSV
+                </button>
+              ) : null}
+            </div>
           </div>
           {quotes.length ? (
             <div>
@@ -175,7 +240,46 @@ function QuotesPage() {
               </div>
 
               {filteredQuotes.length ? (
-                <div className="overflow-x-auto">
+                <>
+                {/* Mobile : cartes empilees, tout est visible sans scroll lateral. */}
+                <div className="divide-y divide-slate-100 md:hidden">
+                  {filteredQuotes.map((quote) => (
+                    <div key={quote.id} className="space-y-2.5 px-4 py-3.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <button onClick={() => { setSelectedQuoteId(quote.id); setActiveModal('preview') }} className="font-bold text-slate-950">
+                          {quote.reference}
+                        </button>
+                        <span className={`inline-flex rounded px-2 py-1 text-xs font-bold ${statusClasses[quote.status] ?? statusClasses.Draft}`}>
+                          {statusLabels[quote.status] ?? quote.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        {quote.customer?.name ?? 'Client libre'} · {quote.title} · Valide jusqu'au {formatDate(quote.validUntil)}
+                      </p>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-bold text-slate-950">{formatMoney(quote.totalCents)}</span>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => { setSelectedQuoteId(quote.id); setActiveModal('preview') }}
+                            className="rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                          >
+                            Apercu
+                          </button>
+                          <select
+                            value={quote.status}
+                            onChange={(event) => void changeStatus(quote.id, event.target.value as QuoteStatus)}
+                            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-bold text-slate-700"
+                            aria-label={`Changer le statut de ${quote.reference}`}
+                          >
+                            {Object.entries(statusLabels).map(([status, label]) => <option key={status} value={status}>{label}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {/* Desktop : table complete. */}
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full min-w-[900px] text-left text-sm">
                     <thead className="bg-slate-50 text-slate-500">
                       <tr>
@@ -189,9 +293,9 @@ function QuotesPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filteredQuotes.map((quote) => (
-                        <tr key={quote.id} className={quote.id === selectedQuote?.id ? 'quote-row-selected' : 'list-row'}>
+                        <tr key={quote.id} className="list-row">
                           <td className="px-4 py-3">
-                            <button onClick={() => setSelectedQuoteId(quote.id)} className="font-bold text-slate-950 hover:underline">
+                            <button onClick={() => { setSelectedQuoteId(quote.id); setActiveModal('preview') }} className="font-bold text-slate-950 hover:underline">
                               {quote.reference}
                             </button>
                             <p className="mt-0.5 text-xs text-slate-500">Valide jusqu'au {formatDate(quote.validUntil)}</p>
@@ -207,14 +311,10 @@ function QuotesPage() {
                           <td className="px-4 py-3 text-right">
                             <div className="inline-flex flex-wrap justify-end gap-2">
                               <button
-                                onClick={() => setSelectedQuoteId(quote.id)}
-                                className={`rounded px-3 py-1.5 text-xs font-bold ${
-                                  quote.id === selectedQuote?.id
-                                    ? 'border border-slate-950 bg-slate-950 text-white'
-                                    : 'border border-slate-300 text-slate-700 hover:bg-slate-50'
-                                }`}
+                                onClick={() => { setSelectedQuoteId(quote.id); setActiveModal('preview') }}
+                                className="rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
                               >
-                                {quote.id === selectedQuote?.id ? 'Ouvert' : 'Voir apercu'}
+                                Apercu
                               </button>
                               <select
                                 value={quote.status}
@@ -231,6 +331,7 @@ function QuotesPage() {
                     </tbody>
                   </table>
                 </div>
+                </>
               ) : (
                 <div className="px-5 py-10 text-center">
                   <p className="font-semibold text-slate-800">Aucun devis ne correspond aux filtres.</p>
@@ -253,28 +354,58 @@ function QuotesPage() {
           )}
         </section>
 
-        <aside className="rounded border border-slate-200 bg-white p-4">
-          {selectedQuote ? (
-            <>
-              <div className="no-print mb-4 flex items-center justify-between gap-2">
-                <div>
-                  <h2 className="font-light text-slate-950">Apercu impression de devis</h2>
-                  <p className="text-xs text-slate-500">{selectedQuote.reference}</p>
-                </div>
+      {/* L'apercu s'ouvre dans un modal plutot que dans une colonne fixe :
+          la liste garde toute la largeur et le document se consulte a la demande. */}
+      {activeModal === 'preview' && selectedQuote ? (
+        <div className="print-modal fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 px-3 py-6 sm:px-4 sm:py-8" role="dialog" aria-modal="true">
+          <div className="w-full max-w-3xl rounded border border-slate-200 bg-white shadow-xl">
+            <div className="no-print flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-5">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">Apercu du devis</h2>
+                <p className="text-xs text-slate-500">
+                  {selectedQuote.reference} · {statusLabels[selectedQuote.status] ?? selectedQuote.status}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => void emailQuote(selectedQuote.id)} className="inline-flex items-center gap-2 rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" title="Envoyer le devis par email au client">
+                  <Mail className="size-4" />
+                  Email
+                </button>
+                <button onClick={() => void invoiceQuote(selectedQuote.id)} className="inline-flex items-center gap-2 rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" title="Convertir ce devis en facture">
+                  <ReceiptText className="size-4" />
+                  Facturer
+                </button>
                 <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded bg-slate-950 px-3 py-2 text-sm font-semibold text-white">
                   <Printer className="size-4" />
                   Imprimer
                 </button>
+                <button type="button" onClick={() => setActiveModal(null)} className="inline-flex size-9 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50" aria-label="Fermer">
+                  <X className="size-4" />
+                </button>
               </div>
-              <QuotePrint quote={selectedQuote} settings={settings} companyName={data.company.name} />
-            </>
-          ) : (
-            <div className="no-print rounded border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
-              Selectionne ou cree un devis pour afficher l'apercu imprimable.
             </div>
-          )}
-        </aside>
-      </div>
+            <div className="p-4 sm:p-5">
+              <DocumentPrint
+                kind="quote"
+                doc={{
+                  reference: selectedQuote.reference,
+                  title: selectedQuote.title,
+                  issueDate: selectedQuote.issueDate,
+                  deadline: selectedQuote.validUntil,
+                  customer: selectedQuote.customer,
+                  lines: selectedQuote.lines,
+                  discountRate: selectedQuote.discountRate,
+                  taxRate: selectedQuote.taxRate,
+                  notes: selectedQuote.notes,
+                  terms: selectedQuote.terms,
+                }}
+                settings={settings}
+                companyName={data.company.name}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {activeModal === 'quote' ? (
         <QuoteModal
@@ -335,16 +466,22 @@ function QuoteModal({
   const [notes, setNotes] = React.useState('')
   const [terms, setTerms] = React.useState(defaultTerms)
   const [lines, setLines] = React.useState<QuoteLineForm[]>([
-    { itemId: items[0]?.id ?? '', description: items[0]?.name ?? '', quantity: '1', unitPrice: String(items[0]?.price ?? 0) },
+    { itemId: items[0]?.id ?? '', description: items[0]?.name ?? '', quantity: '1', unitPrice: String(items[0]?.price ?? 0), vatRate: itemVatRate(items[0]) },
   ])
   const [error, setError] = React.useState('')
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
-  const subtotal = lines.reduce((sum, line) => sum + getNumber(line.quantity) * getNumber(line.unitPrice), 0)
-  const discount = Math.round(subtotal * (getNumber(discountRate) / 100))
-  const taxable = Math.max(0, subtotal - discount)
-  const tax = Math.round(taxable * (getNumber(taxRate) / 100))
-  const total = taxable + tax
+  // Meme calcul que le serveur et le document imprime : l'apercu du formulaire
+  // affiche exactement ce qui sera enregistre.
+  const totals = computeDocumentTotals(
+    lines.map((line) => ({
+      quantity: getNumber(line.quantity),
+      unitPrice: getNumber(line.unitPrice),
+      vatRate: line.vatRate === '' ? null : getNumber(line.vatRate),
+    })),
+    getNumber(discountRate),
+    getNumber(taxRate),
+  )
 
   function selectItem(index: number, itemId: string) {
     const item = items.find((candidate) => candidate.id === itemId)
@@ -353,6 +490,7 @@ function QuoteModal({
       itemId,
       description: item?.name ?? line.description,
       unitPrice: String(item?.price ?? line.unitPrice),
+      vatRate: item ? itemVatRate(item) : line.vatRate,
     } : line))
   }
 
@@ -364,6 +502,7 @@ function QuoteModal({
         description: line.description.trim(),
         quantity: Math.max(1, Math.floor(getNumber(line.quantity))),
         unitPrice: Math.max(0, Math.round(getNumber(line.unitPrice))),
+        vatRate: line.vatRate === '' ? null : Math.min(100, Math.max(0, Math.round(getNumber(line.vatRate)))),
       }))
       .filter((line) => line.description)
 
@@ -421,28 +560,29 @@ function QuoteModal({
             ) : null}
             <TextField label="Valide jusqu'au" value={validUntil} onChange={setValidUntil} type="date" required />
             <TextField label="Remise (%)" value={discountRate} onChange={setDiscountRate} type="number" min="0" max="100" />
-            <TextField label="Taxe (%)" value={taxRate} onChange={setTaxRate} type="number" min="0" max="100" />
+            <TextField label="TVA par defaut (%)" value={taxRate} onChange={setTaxRate} type="number" min="0" max="100" />
           </div>
 
           <div className="rounded border border-slate-200">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <h3 className="font-bold text-slate-950">Lignes</h3>
-              <button type="button" onClick={() => setLines((current) => [...current, { itemId: '', description: '', quantity: '1', unitPrice: '0' }])} className="inline-flex items-center gap-2 rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">
+              <button type="button" onClick={() => setLines((current) => [...current, { itemId: '', description: '', quantity: '1', unitPrice: '0', vatRate: '' }])} className="inline-flex items-center gap-2 rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">
                 <Plus className="size-3.5" />
                 Ligne
               </button>
             </div>
-            <div className="hidden grid-cols-[1fr_1.4fr_80px_110px_90px_36px] gap-2 border-b border-slate-100 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400 md:grid">
+            <div className="hidden grid-cols-[1fr_1.3fr_70px_100px_70px_90px_36px] gap-2 border-b border-slate-100 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400 md:grid">
               <span>Article</span>
               <span>Description</span>
               <span className="text-right">Qte</span>
               <span className="text-right">PU</span>
+              <span className="text-right">TVA %</span>
               <span className="text-right">Total</span>
               <span />
             </div>
             <div className="space-y-3 p-4">
               {lines.map((line, index) => (
-                <div key={index} className="grid gap-2 rounded border border-slate-100 p-3 md:grid-cols-[1fr_1.4fr_80px_110px_90px_36px]">
+                <div key={index} className="grid gap-2 rounded border border-slate-100 p-3 md:grid-cols-[1fr_1.3fr_70px_100px_70px_90px_36px]">
                   <label>
                     <span className="field-label md:hidden">Article</span>
                     <select value={line.itemId} onChange={(event) => selectItem(index, event.target.value)} className="field-input">
@@ -461,6 +601,10 @@ function QuoteModal({
                   <label>
                     <span className="field-label md:hidden">PU</span>
                     <input value={line.unitPrice} onChange={(event) => setLines((current) => current.map((candidate, lineIndex) => lineIndex === index ? { ...candidate, unitPrice: event.target.value } : candidate))} type="number" min="0" className="field-input text-right" />
+                  </label>
+                  <label>
+                    <span className="field-label md:hidden">TVA %</span>
+                    <input value={line.vatRate} onChange={(event) => setLines((current) => current.map((candidate, lineIndex) => lineIndex === index ? { ...candidate, vatRate: event.target.value } : candidate))} type="number" min="0" max="100" placeholder="defaut" className="field-input text-right" title="Laisse vide pour appliquer la TVA par defaut du devis" />
                   </label>
                   <div>
                     <span className="field-label md:hidden">Total</span>
@@ -490,11 +634,15 @@ function QuoteModal({
 
         <aside className="self-start rounded border border-slate-200 bg-slate-50 p-4 lg:sticky lg:top-4">
           <h3 className="font-bold text-slate-950">Total</h3>
-          <AmountRow label="Sous-total" value={subtotal} />
-          <AmountRow label="Remise" value={-discount} />
-          <AmountRow label="Taxe" value={tax} />
+          <AmountRow label="Total HT" value={totals.subtotal} />
+          <AmountRow label="Remise" value={-totals.discount} />
+          {totals.vatGroups.length > 1 ? (
+            totals.vatGroups.map((group) => <AmountRow key={group.rate} label={`TVA ${group.rate}%`} value={group.tax} />)
+          ) : (
+            <AmountRow label={totals.vatGroups.length === 1 ? `TVA ${totals.vatGroups[0].rate}%` : 'TVA'} value={totals.taxTotal} />
+          )}
           <div className="mt-4 border-t border-slate-200 pt-4">
-            <AmountRow label="A payer" value={total} strong />
+            <AmountRow label="Total TTC" value={totals.total} strong />
           </div>
           {error ? <p className="mt-4 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</p> : null}
           <div className="mt-5 grid gap-2">
@@ -606,96 +754,10 @@ function SettingsModal({ settings, companyName, companySlug, onClose, onSubmit }
   )
 }
 
-function QuotePrint({ quote, settings, companyName }: { quote: any; settings: any; companyName: string }) {
-  const { formatMoney } = useMoney()
-  const discount = Math.round(quote.subtotalCents * (quote.discountRate / 100))
-  const taxable = Math.max(0, quote.subtotalCents - discount)
-  const tax = Math.round(taxable * (quote.taxRate / 100))
-
-  return (
-    <div className="quote-print-area overflow-hidden rounded border border-slate-200 bg-white text-slate-950">
-      <div className="p-6" style={{ borderTop: `6px solid ${settings.accentColor || '#0f172a'}` }}>
-        <div className="flex items-start justify-between gap-6">
-          <div className="min-w-0">
-            {settings.logoUrl ? <img src={settings.logoUrl} alt="" className="mb-3 h-12 max-w-36 object-contain" /> : <Building2 className="mb-3 size-10 text-slate-300" />}
-            <h2 className="text-lg font-bold text-slate-950">{settings.legalName || companyName}</h2>
-            <p className="mt-1 whitespace-pre-line text-xs leading-5 text-slate-500">{settings.address}</p>
-            <p className="mt-2 text-xs text-slate-500">{[settings.phone, settings.email].filter(Boolean).join(' - ')}</p>
-            {settings.taxId ? <p className="mt-1 text-xs text-slate-500">{settings.taxId}</p> : null}
-          </div>
-          <div className="text-right">
-            <p className="text-2xl font-black uppercase text-slate-950">Devis</p>
-            <p className="mt-1 font-mono text-sm font-bold text-slate-500">{quote.reference}</p>
-            <p className="mt-4 text-xs text-slate-500">Emission: {formatDate(quote.issueDate)}</p>
-            <p className="text-xs text-slate-500">Validite: {formatDate(quote.validUntil)}</p>
-          </div>
-        </div>
-
-        <div className="mt-8 grid gap-4 border-y border-slate-200 py-4 sm:grid-cols-2">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Client</p>
-            <p className="mt-1 font-bold text-slate-950">{quote.customer?.name ?? 'Client libre'}</p>
-            {quote.customer?.email ? <p className="text-xs text-slate-500">{quote.customer.email}</p> : null}
-          </div>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Objet</p>
-            <p className="mt-1 font-bold text-slate-950">{quote.title}</p>
-            <p className={`mt-2 inline-flex rounded px-2 py-1 text-xs font-bold ${statusClasses[quote.status] ?? statusClasses.Draft}`}>{statusLabels[quote.status] ?? quote.status}</p>
-          </div>
-        </div>
-
-        <table className="mt-6 w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
-              <th className="py-2 font-bold">Description</th>
-              <th className="py-2 text-right font-bold">Qte</th>
-              <th className="py-2 text-right font-bold">PU</th>
-              <th className="py-2 text-right font-bold">Total</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {quote.lines.map((line: any) => (
-              <tr key={line.id}>
-                <td className="py-3 font-semibold text-slate-800">{line.description}</td>
-                <td className="py-3 text-right text-slate-600">{line.quantity}</td>
-                <td className="py-3 text-right text-slate-600">{formatMoney(line.unitPrice)}</td>
-                <td className="py-3 text-right font-bold text-slate-950">{formatMoney(line.totalCents)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <div className="mt-6 flex justify-end">
-          <div className="w-full max-w-xs space-y-2">
-            <AmountRow label="Sous-total" value={quote.subtotalCents} />
-            <AmountRow label={`Remise (${quote.discountRate}%)`} value={-discount} />
-            <AmountRow label={`Taxe (${quote.taxRate}%)`} value={tax} />
-            <div className="border-t border-slate-200 pt-3">
-              <AmountRow label="Total" value={quote.totalCents} strong />
-            </div>
-          </div>
-        </div>
-
-        {quote.notes ? (
-          <div className="mt-6 rounded border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Note</p>
-            <p className="mt-1 whitespace-pre-line text-sm text-slate-600">{quote.notes}</p>
-          </div>
-        ) : null}
-
-        <div className="mt-6 grid gap-4 text-xs leading-5 text-slate-500 sm:grid-cols-2">
-          <div>
-            <p className="font-bold uppercase tracking-widest text-slate-400">Conditions</p>
-            <p className="mt-1 whitespace-pre-line">{quote.terms || settings.paymentTerms}</p>
-          </div>
-          <div className="sm:text-right">
-            <p className="font-bold uppercase tracking-widest text-slate-400">Message</p>
-            <p className="mt-1 whitespace-pre-line">{settings.footerNote}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+// Taux de TVA propose quand on choisit un article : celui de l'article s'il en
+// a un, sinon vide (= taux par defaut du devis).
+function itemVatRate(item: any): string {
+  return item?.vatRate === null || item?.vatRate === undefined ? '' : String(item.vatRate)
 }
 
 function Modal({ title, children, onClose, size = 'normal' }: { title: string; children: React.ReactNode; onClose: () => void; size?: 'normal' | 'wide' }) {
@@ -721,7 +783,8 @@ function Metric({ icon: Icon, label, value, detail }: { icon: any; label: string
         <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p>
         <Icon className="size-4 text-slate-300" />
       </div>
-      <p className="truncate text-2xl font-bold text-slate-950">{value}</p>
+      {/* Pas de truncate : un montant coupe est un montant faux a l'ecran. */}
+      <p className="break-words text-xl font-bold text-slate-950 sm:text-2xl">{value}</p>
       <p className="mt-1 text-xs text-slate-500">{detail}</p>
     </div>
   )

@@ -674,6 +674,10 @@ export const getCompanyAdministration = createServerFn({ method: 'GET' })
             phone: company.phone ?? '',
             email: company.email ?? '',
             taxId: company.taxId ?? '',
+            rccm: company.rccm ?? '',
+            capital: company.capital ?? '',
+            taxRegime: company.taxRegime ?? '',
+            vatRate: company.vatRate ?? null,
             website: company.website ?? '',
           }
         : null,
@@ -763,6 +767,14 @@ export const updateCompanyProfile = createServerFn({ method: 'POST' })
       phone: z.string().optional(),
       email: z.string().optional(),
       taxId: z.string().optional(),
+      rccm: z.string().optional(),
+      capital: z.string().optional(),
+      taxRegime: z.string().optional(),
+      // Taux de TVA en % : chaine vide -> null (pas de TVA appliquee).
+      vatRate: z.preprocess(
+        (v) => (typeof v === 'string' && v.trim() === '' ? null : v),
+        z.coerce.number().int().min(0).max(100).nullable().optional(),
+      ),
       website: optionalUrlInput,
     }),
   )
@@ -789,6 +801,10 @@ export const updateCompanyProfile = createServerFn({ method: 'POST' })
           phone: data.phone?.trim() || null,
           email: data.email?.trim() || null,
           taxId: data.taxId?.trim() || null,
+          rccm: data.rccm?.trim() || null,
+          capital: data.capital?.trim() || null,
+          taxRegime: data.taxRegime?.trim() || null,
+          vatRate: data.vatRate ?? null,
           website: data.website?.trim() || null,
         },
       })
@@ -802,6 +818,9 @@ export const updateCompanyProfile = createServerFn({ method: 'POST' })
           phone: updatedCompany.phone,
           email: updatedCompany.email,
           taxId: updatedCompany.taxId,
+          rccm: updatedCompany.rccm,
+          capital: updatedCompany.capital,
+          taxRegime: updatedCompany.taxRegime,
         },
         create: {
           companyId: updatedCompany.id,
@@ -811,6 +830,9 @@ export const updateCompanyProfile = createServerFn({ method: 'POST' })
           phone: updatedCompany.phone,
           email: updatedCompany.email,
           taxId: updatedCompany.taxId,
+          rccm: updatedCompany.rccm,
+          capital: updatedCompany.capital,
+          taxRegime: updatedCompany.taxRegime,
         },
       })
 
@@ -843,6 +865,10 @@ export const updateCompanyProfile = createServerFn({ method: 'POST' })
         phone: updated.phone ?? '',
         email: updated.email ?? '',
         taxId: updated.taxId ?? '',
+        rccm: updated.rccm ?? '',
+        capital: updated.capital ?? '',
+        taxRegime: updated.taxRegime ?? '',
+        vatRate: updated.vatRate ?? null,
         website: updated.website ?? '',
       },
     }

@@ -109,6 +109,10 @@ function SettingsPage() {
           phone: String(form.get('phone') ?? ''),
           email: String(form.get('email') ?? ''),
           taxId: String(form.get('taxId') ?? ''),
+          rccm: String(form.get('rccm') ?? ''),
+          capital: String(form.get('capital') ?? ''),
+          taxRegime: String(form.get('taxRegime') ?? ''),
+          vatRate: String(form.get('vatRate') ?? ''),
           website,
         },
       })
@@ -202,6 +206,10 @@ function GeneralSettings({
     company?.phone,
     company?.email,
     company?.taxId,
+    company?.rccm,
+    company?.capital,
+    company?.taxRegime,
+    company?.vatRate,
     company?.website,
   ].join('|')
 
@@ -227,7 +235,6 @@ function GeneralSettings({
           <div className="grid gap-4 sm:grid-cols-2">
             <TextField label="Telephone" name="phone" defaultValue={company?.phone ?? ''} />
             <TextField label="Email" name="email" type="email" defaultValue={company?.email ?? ''} />
-            <TextField label="NIF / RCCM" name="taxId" defaultValue={company?.taxId ?? ''} />
             <TextField label="Site web" name="website" defaultValue={company?.website ?? ''} placeholder="https://..." />
             <label className="block">
               <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-400">Devise</span>
@@ -264,6 +271,34 @@ function GeneralSettings({
               <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-400">Adresse</span>
               <textarea name="address" defaultValue={company?.address ?? ''} rows={3} className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-950" placeholder="Adresse complete de l'entreprise" />
             </label>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-bold text-slate-950">Mentions legales et fiscalite</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Ces informations figurent sur vos devis et factures. Elles sont exigees pour qu'un document soit opposable au fisc.
+            </p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <TextField label="NCC / IFU (numero contribuable)" name="taxId" defaultValue={company?.taxId ?? ''} placeholder="Ex: 1234567 A" />
+              <TextField label="RCCM (registre du commerce)" name="rccm" defaultValue={company?.rccm ?? ''} placeholder="Ex: CI-ABJ-2024-B-12345" />
+              <TextField label="Capital social" name="capital" defaultValue={company?.capital ?? ''} placeholder="Ex: 1 000 000 FCFA" />
+              <TextField label="Regime fiscal" name="taxRegime" defaultValue={company?.taxRegime ?? ''} placeholder="Ex: Reel normal" />
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-400">Taux de TVA par defaut (%)</span>
+                <input
+                  name="vatRate"
+                  type="number"
+                  min="0"
+                  max="100"
+                  defaultValue={company?.vatRate ?? ''}
+                  placeholder="Ex: 18"
+                  className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-950"
+                />
+                <span className="mt-1 block text-xs text-slate-400">
+                  Laisse vide si tu n'appliques pas la TVA. Sert a ventiler HT / TVA / TTC sur les tickets de caisse.
+                </span>
+              </label>
+            </div>
           </div>
 
           <div className="flex justify-end border-t border-slate-100 pt-4">

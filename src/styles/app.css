@@ -405,7 +405,18 @@ html:not(.theme-light) .dark\:text-emerald-300 {
   border-color: #e2e8f0 !important;
 }
 
+/* Documents administratifs (devis / facture) sur A4 ; ticket de caisse en rouleau. */
+@page {
+  size: A4;
+  margin: 14mm 14mm 16mm 14mm;
+}
+
 @media print {
+  html,
+  body {
+    background: #ffffff !important;
+  }
+
   body * {
     visibility: hidden !important;
   }
@@ -419,10 +430,31 @@ html:not(.theme-light) .dark\:text-emerald-300 {
 
   .ticket-print-area,
   .quote-print-area {
-    position: fixed !important;
-    inset: 0 auto auto 0 !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    /* Sans ca, navigateurs imprimeraient les fonds/couleurs en gris ou blanc. */
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Apercu ouvert dans un modal : le conteneur fixe avec scroll interne
+     couperait le document a une page. On le remet dans le flux du print. */
+  .print-modal,
+  .print-modal > div {
+    position: static !important;
+    inset: auto !important;
+    overflow: visible !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
     border: 0 !important;
     box-shadow: none !important;
+    background: #ffffff !important;
   }
 
   .ticket-print-area {
@@ -430,15 +462,28 @@ html:not(.theme-light) .dark\:text-emerald-300 {
   }
 
   .quote-print-area {
-    width: 210mm !important;
-    min-height: 297mm !important;
-    color: #020617 !important;
+    width: 100% !important;
+    color: #0a1728 !important;
     background: #ffffff !important;
   }
 
-  .quote-print-area * {
-    color: #020617 !important;
-    border-color: #e2e8f0 !important;
+  /* Le contenu noir reste noir ; seules les couleurs de marque explicites
+     (accent, en-tetes) sont preservees via leurs propres regles ci-dessus. */
+  .quote-print-area .text-slate-950,
+  .quote-print-area .text-slate-900,
+  .quote-print-area .text-slate-800 {
+    color: #0a1728 !important;
+  }
+
+  .quote-print-area .text-slate-500,
+  .quote-print-area .text-slate-600,
+  .quote-print-area .text-slate-700 {
+    color: #475569 !important;
+  }
+
+  .quote-print-area .text-slate-400,
+  .quote-print-area .text-slate-300 {
+    color: #6b7280 !important;
   }
 
   .quote-print-area .bg-white,
@@ -447,10 +492,15 @@ html:not(.theme-light) .dark\:text-emerald-300 {
     background: #ffffff !important;
   }
 
-  .quote-print-area .text-slate-500,
-  .quote-print-area .text-slate-600,
-  .quote-print-area .text-slate-700 {
-    color: #475569 !important;
+  /* Un client ou une ligne de tableau ne doit pas etre coupe entre deux pages. */
+  .quote-print-area tr,
+  .quote-print-area .doc-keep {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .quote-print-area thead {
+    display: table-header-group;
   }
 
   .no-print {

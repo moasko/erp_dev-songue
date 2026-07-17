@@ -75,7 +75,7 @@ function CompanyLayout() {
 
 // Liens de navigation reserves aux gestionnaires (permission company.manage).
 // Les autres membres ne les voient pas ; le serveur reste la garde ultime.
-const adminOnlyPaths = new Set(['/users'])
+const adminOnlyPaths = new Set(['/users', '/activity'])
 
 const mobileLinks = [
   { path: '/pos/register', label: 'Caisse' },
@@ -191,6 +191,7 @@ const erpNavigation: Array<{ label: string; sections: SidebarSection[] }> = [
         children: [
           { path: '/settings', label: 'Parametres', icon: Settings, exact: true },
           { path: '/users', label: 'Utilisateurs', icon: Users, exact: true },
+          { path: '/activity', label: 'Journal d\'activite', icon: History, exact: true },
         ],
       },
     ],

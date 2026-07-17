@@ -36,6 +36,7 @@ import { Route as CompanySlugHelpdeskRouteImport } from './routes/$companySlug.h
 import { Route as CompanySlugFinanceRouteImport } from './routes/$companySlug.finance'
 import { Route as CompanySlugDashboardRouteImport } from './routes/$companySlug.dashboard'
 import { Route as CompanySlugCrmRouteImport } from './routes/$companySlug.crm'
+import { Route as CompanySlugActivityRouteImport } from './routes/$companySlug.activity'
 import { Route as CompanySlugAccountingRouteImport } from './routes/$companySlug.accounting'
 import { Route as CompanySlugSalesIndexRouteImport } from './routes/$companySlug.sales.index'
 import { Route as CompanySlugPurchasesIndexRouteImport } from './routes/$companySlug.purchases.index'
@@ -213,6 +214,11 @@ const CompanySlugDashboardRoute = CompanySlugDashboardRouteImport.update({
 const CompanySlugCrmRoute = CompanySlugCrmRouteImport.update({
   id: '/crm',
   path: '/crm',
+  getParentRoute: () => CompanySlugRoute,
+} as any)
+const CompanySlugActivityRoute = CompanySlugActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
   getParentRoute: () => CompanySlugRoute,
 } as any)
 const CompanySlugAccountingRoute = CompanySlugAccountingRouteImport.update({
@@ -457,6 +463,7 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/verify': typeof VerifyRoute
   '/$companySlug/accounting': typeof CompanySlugAccountingRouteWithChildren
+  '/$companySlug/activity': typeof CompanySlugActivityRoute
   '/$companySlug/crm': typeof CompanySlugCrmRouteWithChildren
   '/$companySlug/dashboard': typeof CompanySlugDashboardRoute
   '/$companySlug/finance': typeof CompanySlugFinanceRouteWithChildren
@@ -526,6 +533,7 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRoute
   '/setup': typeof SetupRoute
   '/verify': typeof VerifyRoute
+  '/$companySlug/activity': typeof CompanySlugActivityRoute
   '/$companySlug/dashboard': typeof CompanySlugDashboardRoute
   '/$companySlug/helpdesk': typeof CompanySlugHelpdeskRoute
   '/$companySlug/invoices': typeof CompanySlugInvoicesRoute
@@ -591,6 +599,7 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/verify': typeof VerifyRoute
   '/$companySlug/accounting': typeof CompanySlugAccountingRouteWithChildren
+  '/$companySlug/activity': typeof CompanySlugActivityRoute
   '/$companySlug/crm': typeof CompanySlugCrmRouteWithChildren
   '/$companySlug/dashboard': typeof CompanySlugDashboardRoute
   '/$companySlug/finance': typeof CompanySlugFinanceRouteWithChildren
@@ -664,6 +673,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/verify'
     | '/$companySlug/accounting'
+    | '/$companySlug/activity'
     | '/$companySlug/crm'
     | '/$companySlug/dashboard'
     | '/$companySlug/finance'
@@ -733,6 +743,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/setup'
     | '/verify'
+    | '/$companySlug/activity'
     | '/$companySlug/dashboard'
     | '/$companySlug/helpdesk'
     | '/$companySlug/invoices'
@@ -797,6 +808,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/verify'
     | '/$companySlug/accounting'
+    | '/$companySlug/activity'
     | '/$companySlug/crm'
     | '/$companySlug/dashboard'
     | '/$companySlug/finance'
@@ -1061,6 +1073,13 @@ declare module '@tanstack/react-router' {
       path: '/crm'
       fullPath: '/$companySlug/crm'
       preLoaderRoute: typeof CompanySlugCrmRouteImport
+      parentRoute: typeof CompanySlugRoute
+    }
+    '/$companySlug/activity': {
+      id: '/$companySlug/activity'
+      path: '/activity'
+      fullPath: '/$companySlug/activity'
+      preLoaderRoute: typeof CompanySlugActivityRouteImport
       parentRoute: typeof CompanySlugRoute
     }
     '/$companySlug/accounting': {
@@ -1524,6 +1543,7 @@ const CompanySlugSalesRouteWithChildren =
 
 interface CompanySlugRouteChildren {
   CompanySlugAccountingRoute: typeof CompanySlugAccountingRouteWithChildren
+  CompanySlugActivityRoute: typeof CompanySlugActivityRoute
   CompanySlugCrmRoute: typeof CompanySlugCrmRouteWithChildren
   CompanySlugDashboardRoute: typeof CompanySlugDashboardRoute
   CompanySlugFinanceRoute: typeof CompanySlugFinanceRouteWithChildren
@@ -1545,6 +1565,7 @@ interface CompanySlugRouteChildren {
 
 const CompanySlugRouteChildren: CompanySlugRouteChildren = {
   CompanySlugAccountingRoute: CompanySlugAccountingRouteWithChildren,
+  CompanySlugActivityRoute: CompanySlugActivityRoute,
   CompanySlugCrmRoute: CompanySlugCrmRouteWithChildren,
   CompanySlugDashboardRoute: CompanySlugDashboardRoute,
   CompanySlugFinanceRoute: CompanySlugFinanceRouteWithChildren,

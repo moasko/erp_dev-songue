@@ -1,7 +1,8 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 import { prisma } from './db'
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
+import { computeDocumentTotals, lineTotal } from '~/utils/documentTotals'
 
 async function getCompany(companySlug: string, permission: string) {
   const { requireCompanyAccess } = await import('./access')
@@ -65,7 +66,45 @@ const quoteLineInput = z.object({
   description: z.string().min(1),
   quantity: z.number().int().positive(),
   unitPrice: z.number().min(0),
+  // null = la ligne suit le taux de TVA par defaut du document
+  vatRate: z.number().int().min(0).max(100).nullable().optional(),
 })
+
+type Tx = Prisma.TransactionClient
+
+// Numero de document sequentiel et sans doublon. L'upsert cree le compteur au
+// premier document ; l'update increment prend un verrou de ligne : deux
+// documents simultanes recoivent forcement deux numeros distincts.
+async function nextDocumentNumber(tx: Tx, companyId: string, kind: string, prefix: string) {
+  await tx.documentCounter.upsert({
+    where: { companyId_kind: { companyId, kind } },
+    update: {},
+    create: { companyId, kind, nextNumber: 1 },
+  })
+  const counter = await tx.documentCounter.update({
+    where: { companyId_kind: { companyId, kind } },
+    data: { nextNumber: { increment: 1 } },
+  })
+  return `${prefix}-${String(counter.nextNumber - 1).padStart(5, '0')}`
+}
+
+// Trace d'audit : qui a fait quoi, sur quelle entite. Passe dans la meme
+// transaction que la mutation pour ne jamais avoir d'action sans trace.
+async function logAudit(
+  client: Tx | PrismaClient,
+  input: { companyId: string; actorId: string | null; action: string; entity: string; entityId: string; metadata?: Record<string, unknown> },
+) {
+  await client.auditLog.create({
+    data: {
+      companyId: input.companyId,
+      actorId: input.actorId,
+      action: input.action,
+      entity: input.entity,
+      entityId: input.entityId,
+      metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+    },
+  })
+}
 
 const optionalUrlInput = z.preprocess(
   (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
@@ -268,7 +307,7 @@ export const createQuote = createServerFn({ method: 'POST' })
     lines: z.array(quoteLineInput).min(1),
   }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug, 'invoice.create')
+    const { company, user } = await getCompanyContext(data.companySlug, 'invoice.create')
     const settings = await ensureQuoteSettings(company.id, company.name)
 
     let customerId = data.customerId || undefined
@@ -283,11 +322,12 @@ export const createQuote = createServerFn({ method: 'POST' })
       customerId = customer.id
     }
 
-    const subtotal = data.lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPrice), 0)
-    const discount = Math.round(subtotal * (data.discountRate / 100))
-    const taxable = Math.max(0, subtotal - discount)
-    const tax = Math.round(taxable * (data.taxRate / 100))
-    const total = taxable + tax
+    const normalizedLines = data.lines.map((line) => ({
+      ...line,
+      unitPrice: Math.round(line.unitPrice),
+      vatRate: line.vatRate ?? null,
+    }))
+    const totals = computeDocumentTotals(normalizedLines, data.discountRate, data.taxRate)
 
     return prisma.$transaction(async (tx) => {
       // Increment atomique : deux devis simultanes ne peuvent pas recevoir la
@@ -298,7 +338,7 @@ export const createQuote = createServerFn({ method: 'POST' })
       })
       const reference = `DEV-${String(numbering.nextNumber - 1).padStart(5, '0')}`
 
-      return tx.quote.create({
+      const quote = await tx.quote.create({
         data: {
           companyId: company.id,
           customerId: customerId ?? null,
@@ -307,23 +347,33 @@ export const createQuote = createServerFn({ method: 'POST' })
           validUntil: new Date(data.validUntil),
           discountRate: Math.round(data.discountRate),
           taxRate: Math.round(data.taxRate),
-          subtotalCents: subtotal,
-          totalCents: total,
+          subtotalCents: totals.subtotal,
+          totalCents: totals.total,
           notes: data.notes?.trim() || null,
           terms: data.terms?.trim() || settings.paymentTerms,
           lines: {
-            create: data.lines.map((line, index) => ({
+            create: normalizedLines.map((line, index) => ({
               itemId: line.itemId || null,
               description: line.description.trim(),
               quantity: line.quantity,
-              unitPrice: Math.round(line.unitPrice),
-              totalCents: Math.round(line.quantity * line.unitPrice),
+              unitPrice: line.unitPrice,
+              totalCents: lineTotal(line),
+              vatRate: line.vatRate,
               sortOrder: index,
             })),
           },
         },
         include: { customer: true, lines: { include: { item: true }, orderBy: { sortOrder: 'asc' } } },
       })
+      await logAudit(tx, {
+        companyId: company.id,
+        actorId: user.id,
+        action: 'quote.created',
+        entity: 'Quote',
+        entityId: quote.id,
+        metadata: { reference, totalCents: totals.total },
+      })
+      return quote
     })
   })
 
@@ -334,8 +384,8 @@ export const updateQuoteStatus = createServerFn({ method: 'POST' })
     status: z.enum(['Draft', 'Sent', 'Accepted', 'Rejected', 'Expired']),
   }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug, 'invoice.update')
-    return prisma.quote.update({
+    const { company, user } = await getCompanyContext(data.companySlug, 'invoice.update')
+    const quote = await prisma.quote.update({
       where: { id: data.quoteId, companyId: company.id },
       data: {
         status: data.status,
@@ -343,6 +393,15 @@ export const updateQuoteStatus = createServerFn({ method: 'POST' })
       },
       include: { customer: true, lines: { include: { item: true }, orderBy: { sortOrder: 'asc' } } },
     })
+    await logAudit(prisma, {
+      companyId: company.id,
+      actorId: user.id,
+      action: 'quote.status_updated',
+      entity: 'Quote',
+      entityId: quote.id,
+      metadata: { reference: quote.reference, status: data.status },
+    })
+    return quote
   })
 
 export const saveQuoteSettings = createServerFn({ method: 'POST' })
@@ -468,12 +527,12 @@ export const createPurchaseInvoice = createServerFn({ method: 'POST' })
     if (!account) throw new Error('Compte introuvable.')
 
     const amount = Math.round(data.amount)
-    const reference = data.reference?.trim() || `ACH-${Date.now().toString().slice(-6)}`
     const vendor = await prisma.vendor.findFirst({
       where: { companyId: company.id, name: data.vendorName.trim() },
     })
 
     return prisma.$transaction(async (tx) => {
+      const reference = data.reference?.trim() || await nextDocumentNumber(tx, company.id, 'purchaseInvoice', 'ACH')
       const invoice = await tx.purchaseInvoice.create({
         data: {
           companyId: company.id,
@@ -524,32 +583,51 @@ export const createPurchaseInvoice = createServerFn({ method: 'POST' })
     })
   })
 
+const invoiceInclude = {
+  customer: true,
+  quote: { select: { id: true, reference: true } },
+  lines: { include: { item: true }, orderBy: { sortOrder: 'asc' as const } },
+  payments: { orderBy: { date: 'desc' as const } },
+}
+
 export const createSalesInvoice = createServerFn({ method: 'POST' })
   .inputValidator(z.object({
     companySlug: z.string(),
     customerId: z.string().optional(),
     customerName: z.string().optional(),
+    customerEmail: z.string().optional(),
     accountId: z.string().optional(),
-    number: z.string().optional(),
-    amount: z.number().positive(),
+    title: z.string().optional(),
+    dueDate: z.string().optional(),
+    discountRate: z.number().min(0).max(100).default(0),
+    taxRate: z.number().min(0).max(100).default(0),
     status: z.enum(['Draft', 'Sent', 'Paid']).default('Draft'),
     notes: z.string().optional(),
+    terms: z.string().optional(),
+    lines: z.array(quoteLineInput).min(1),
   }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug, 'invoice.create')
+    const { company, user } = await getCompanyContext(data.companySlug, 'invoice.create')
+    const settings = await ensureQuoteSettings(company.id, company.name)
+
     let customerId = data.customerId || undefined
     if (!customerId && data.customerName?.trim()) {
       const customer = await prisma.customer.create({
         data: {
           companyId: company.id,
           name: data.customerName.trim(),
+          email: data.customerEmail?.trim() || null,
         },
       })
       customerId = customer.id
     }
 
-    const amount = Math.round(data.amount)
-    const number = data.number?.trim() || `FAC-${Date.now().toString().slice(-6)}`
+    const normalizedLines = data.lines.map((line) => ({
+      ...line,
+      unitPrice: Math.round(line.unitPrice),
+      vatRate: line.vatRate ?? null,
+    }))
+    const totals = computeDocumentTotals(normalizedLines, data.discountRate, data.taxRate)
 
     // Comme pour les factures d'achat : une facture payee impacte la
     // tresorerie (transaction + paiement + solde du compte).
@@ -561,53 +639,430 @@ export const createSalesInvoice = createServerFn({ method: 'POST' })
     if (data.status === 'Paid' && !account) throw new Error('Compte introuvable.')
 
     return prisma.$transaction(async (tx) => {
+      const number = await nextDocumentNumber(tx, company.id, 'salesInvoice', 'FAC')
+
       const invoice = await tx.salesInvoice.create({
         data: {
           companyId: company.id,
           customerId: customerId ?? null,
           number,
+          title: data.title?.trim() || null,
+          dueDate: data.dueDate ? new Date(data.dueDate) : defaultDueDate(),
           status: data.status,
-          subtotalCents: amount,
-          totalCents: amount,
-          paidCents: data.status === 'Paid' ? amount : 0,
+          discountRate: Math.round(data.discountRate),
+          taxRate: Math.round(data.taxRate),
+          subtotalCents: totals.subtotal,
+          taxCents: totals.taxTotal,
+          totalCents: totals.total,
+          paidCents: data.status === 'Paid' ? totals.total : 0,
           notes: data.notes?.trim() || null,
+          terms: data.terms?.trim() || settings.paymentTerms,
+          lines: {
+            create: normalizedLines.map((line, index) => ({
+              itemId: line.itemId || null,
+              description: line.description.trim(),
+              quantity: line.quantity,
+              unitPrice: line.unitPrice,
+              totalCents: lineTotal(line),
+              vatRate: line.vatRate,
+              sortOrder: index,
+            })),
+          },
         },
-        include: { customer: true },
+        include: invoiceInclude,
       })
 
       if (data.status === 'Paid' && account) {
-        const transaction = await tx.transaction.create({
-          data: {
-            companyId: company.id,
-            accountId: account.id,
-            description: invoice.customer ? `${invoice.customer.name} - ${number}` : `Facture ${number}`,
-            amount,
-            type: 'Income',
-            category: 'Ventes',
-            reference: number,
-            status: 'Completed',
-          },
-        })
-        await tx.payment.create({
-          data: {
-            companyId: company.id,
-            accountId: account.id,
-            transactionId: transaction.id,
-            salesInvoiceId: invoice.id,
-            amount,
-            direction: 'In',
-            method: account.type,
-            reference: number,
-          },
-        })
-        await tx.bankAccount.update({
-          where: { id: account.id },
-          data: { balance: { increment: amount } },
+        await registerInvoicePayment(tx, {
+          companyId: company.id,
+          account,
+          invoice: { id: invoice.id, number, customerName: invoice.customer?.name ?? null },
+          amount: totals.total,
         })
       }
 
+      await logAudit(tx, {
+        companyId: company.id,
+        actorId: user.id,
+        action: 'invoice.created',
+        entity: 'SalesInvoice',
+        entityId: invoice.id,
+        metadata: { number, totalCents: totals.total, status: data.status },
+      })
+
       return invoice
     })
+  })
+
+// Echeance par defaut : 30 jours apres emission.
+function defaultDueDate() {
+  const date = new Date()
+  date.setDate(date.getDate() + 30)
+  return date
+}
+
+// Encaissement d'une facture : le paiement, la transaction de tresorerie et le
+// solde du compte bougent ensemble, dans la transaction de l'appelant.
+async function registerInvoicePayment(
+  tx: Tx,
+  input: {
+    companyId: string
+    account: { id: string; type: string }
+    invoice: { id: string; number: string; customerName: string | null }
+    amount: number
+    method?: string
+  },
+) {
+  const transaction = await tx.transaction.create({
+    data: {
+      companyId: input.companyId,
+      accountId: input.account.id,
+      description: input.invoice.customerName
+        ? `${input.invoice.customerName} - ${input.invoice.number}`
+        : `Facture ${input.invoice.number}`,
+      amount: input.amount,
+      type: 'Income',
+      category: 'Ventes',
+      reference: input.invoice.number,
+      status: 'Completed',
+    },
+  })
+  await tx.payment.create({
+    data: {
+      companyId: input.companyId,
+      accountId: input.account.id,
+      transactionId: transaction.id,
+      salesInvoiceId: input.invoice.id,
+      amount: input.amount,
+      direction: 'In',
+      method: input.method ?? input.account.type,
+      reference: input.invoice.number,
+    },
+  })
+  await tx.bankAccount.update({
+    where: { id: input.account.id },
+    data: { balance: { increment: input.amount } },
+  })
+}
+
+// Conversion d'un devis en facture : les lignes, remise et taux de TVA sont
+// figes tels quels ; la facture recoit son propre numero sequentiel et reste
+// liee au devis d'origine.
+export const convertQuoteToInvoice = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string(),
+    quoteId: z.string(),
+    dueDate: z.string().optional(),
+  }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'invoice.create')
+    const quote = await prisma.quote.findFirst({
+      where: { id: data.quoteId, companyId: company.id },
+      include: { customer: true, lines: { orderBy: { sortOrder: 'asc' } } },
+    })
+    if (!quote) throw new Error('Devis introuvable.')
+    if (!quote.lines.length) throw new Error('Ce devis ne contient aucune ligne.')
+
+    const existing = await prisma.salesInvoice.findFirst({
+      where: { companyId: company.id, quoteId: quote.id, status: { not: 'Cancelled' } },
+    })
+    if (existing) throw new Error(`Ce devis est deja facture (${existing.number}).`)
+
+    // Recalcul avec l'algorithme commun : pour un devis cree par l'application
+    // le resultat est identique aux montants stockes, et la facture repart d'une
+    // ventilation HT/TVA coherente ligne a ligne.
+    const totals = computeDocumentTotals(quote.lines, quote.discountRate, quote.taxRate)
+
+    return prisma.$transaction(async (tx) => {
+      const number = await nextDocumentNumber(tx, company.id, 'salesInvoice', 'FAC')
+
+      const invoice = await tx.salesInvoice.create({
+        data: {
+          companyId: company.id,
+          customerId: quote.customerId,
+          quoteId: quote.id,
+          number,
+          title: quote.title,
+          dueDate: data.dueDate ? new Date(data.dueDate) : defaultDueDate(),
+          status: 'Draft',
+          discountRate: quote.discountRate,
+          taxRate: quote.taxRate,
+          subtotalCents: totals.subtotal,
+          taxCents: totals.taxTotal,
+          totalCents: totals.total,
+          currency: quote.currency,
+          notes: quote.notes,
+          terms: quote.terms,
+          lines: {
+            create: quote.lines.map((line) => ({
+              itemId: line.itemId,
+              description: line.description,
+              quantity: line.quantity,
+              unitPrice: line.unitPrice,
+              totalCents: line.totalCents,
+              vatRate: line.vatRate,
+              sortOrder: line.sortOrder,
+            })),
+          },
+        },
+        include: invoiceInclude,
+      })
+
+      // Un devis facture est de fait accepte.
+      if (quote.status !== 'Accepted') {
+        await tx.quote.update({
+          where: { id: quote.id },
+          data: { status: 'Accepted', acceptedAt: quote.acceptedAt ?? new Date() },
+        })
+      }
+
+      await logAudit(tx, {
+        companyId: company.id,
+        actorId: user.id,
+        action: 'invoice.created_from_quote',
+        entity: 'SalesInvoice',
+        entityId: invoice.id,
+        metadata: { number, quoteReference: quote.reference, totalCents: quote.totalCents },
+      })
+
+      return invoice
+    })
+  })
+
+export const updateSalesInvoiceStatus = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string(),
+    invoiceId: z.string(),
+    status: z.enum(['Draft', 'Sent', 'Cancelled']),
+  }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'invoice.update')
+    const existing = await prisma.salesInvoice.findFirst({
+      where: { id: data.invoiceId, companyId: company.id },
+    })
+    if (!existing) throw new Error('Facture introuvable.')
+    if (existing.paidCents > 0 && data.status === 'Cancelled') {
+      throw new Error('Impossible d\'annuler une facture partiellement ou totalement encaissee.')
+    }
+
+    const invoice = await prisma.salesInvoice.update({
+      where: { id: existing.id },
+      data: { status: data.status },
+      include: invoiceInclude,
+    })
+    await logAudit(prisma, {
+      companyId: company.id,
+      actorId: user.id,
+      action: 'invoice.status_updated',
+      entity: 'SalesInvoice',
+      entityId: invoice.id,
+      metadata: { number: invoice.number, status: data.status },
+    })
+    return invoice
+  })
+
+export const recordInvoicePayment = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string(),
+    invoiceId: z.string(),
+    accountId: z.string().optional(),
+    amount: z.number().positive(),
+    method: z.string().optional(),
+  }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'finance.manage')
+    const invoice = await prisma.salesInvoice.findFirst({
+      where: { id: data.invoiceId, companyId: company.id },
+      include: { customer: true },
+    })
+    if (!invoice) throw new Error('Facture introuvable.')
+    if (invoice.status === 'Cancelled') throw new Error('Cette facture est annulee.')
+
+    const amount = Math.round(data.amount)
+    const remaining = invoice.totalCents - invoice.paidCents
+    if (amount > remaining) {
+      throw new Error(`Le paiement depasse le reste a payer (${remaining}).`)
+    }
+
+    const account = data.accountId
+      ? await prisma.bankAccount.findFirst({ where: { id: data.accountId, companyId: company.id } })
+      : await ensureAccount(company.id, 'Cash', 'Caisse boutique')
+    if (!account) throw new Error('Compte introuvable.')
+
+    return prisma.$transaction(async (tx) => {
+      await registerInvoicePayment(tx, {
+        companyId: company.id,
+        account,
+        invoice: { id: invoice.id, number: invoice.number, customerName: invoice.customer?.name ?? null },
+        amount,
+        method: data.method,
+      })
+
+      const paidCents = invoice.paidCents + amount
+      const updated = await tx.salesInvoice.update({
+        where: { id: invoice.id },
+        data: {
+          paidCents,
+          status: paidCents >= invoice.totalCents ? 'Paid' : 'PartiallyPaid',
+        },
+        include: invoiceInclude,
+      })
+
+      await logAudit(tx, {
+        companyId: company.id,
+        actorId: user.id,
+        action: 'invoice.payment_recorded',
+        entity: 'SalesInvoice',
+        entityId: invoice.id,
+        metadata: { number: invoice.number, amount, paidCents },
+      })
+
+      return updated
+    })
+  })
+
+// Envoi du document au client par email : rendu HTML fidele au modele imprime
+// (mentions legales, ventilation TVA, total en lettres). Le statut passe a
+// « Envoye » des que l'email part.
+export const sendDocumentByEmail = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string(),
+    kind: z.enum(['quote', 'invoice']),
+    documentId: z.string(),
+    // Adresse de destination : par defaut celle du client.
+    to: z.string().email().optional(),
+  }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'invoice.update')
+    const { sendMail, mailIsConfigured } = await import('./mail')
+    const { documentEmail } = await import('./documentEmail')
+    const settings = await ensureQuoteSettings(company.id, company.name)
+
+    const source = data.kind === 'quote'
+      ? await prisma.quote.findFirst({
+          where: { id: data.documentId, companyId: company.id },
+          include: { customer: true, lines: { orderBy: { sortOrder: 'asc' } } },
+        })
+      : await prisma.salesInvoice.findFirst({
+          where: { id: data.documentId, companyId: company.id },
+          include: { customer: true, lines: { orderBy: { sortOrder: 'asc' } } },
+        })
+    if (!source) throw new Error('Document introuvable.')
+
+    const to = data.to?.trim() || source.customer?.email?.trim()
+    if (!to) throw new Error('Ce client n\'a pas d\'adresse email. Renseigne une adresse de destination.')
+
+    const isQuote = data.kind === 'quote'
+    const reference = isQuote ? (source as any).reference : (source as any).number
+    const message = documentEmail({
+      doc: {
+        kind: data.kind,
+        reference,
+        title: (source as any).title,
+        issueDate: source.issueDate,
+        deadline: isQuote ? (source as any).validUntil : (source as any).dueDate,
+        customerName: source.customer?.name ?? 'Client',
+        lines: source.lines,
+        discountRate: (source as any).discountRate ?? 0,
+        taxRate: (source as any).taxRate ?? 0,
+        notes: source.notes,
+        terms: (source as any).terms,
+        paidCents: isQuote ? 0 : (source as any).paidCents,
+      },
+      settings,
+      companyName: company.name,
+      currency: company.currency,
+      locale: company.locale,
+    })
+
+    const result = await sendMail({ to, ...message })
+    if (!result.ok) throw new Error(result.message || 'L\'email n\'a pas pu etre envoye.')
+
+    // Brouillon envoye = document officiellement transmis.
+    const updated = isQuote
+      ? await prisma.quote.update({
+          where: { id: source.id },
+          data: source.status === 'Draft' ? { status: 'Sent' } : {},
+          include: { customer: true, lines: { include: { item: true }, orderBy: { sortOrder: 'asc' } } },
+        })
+      : await prisma.salesInvoice.update({
+          where: { id: source.id },
+          data: source.status === 'Draft' ? { status: 'Sent' } : {},
+          include: invoiceInclude,
+        })
+
+    await logAudit(prisma, {
+      companyId: company.id,
+      actorId: user.id,
+      action: isQuote ? 'quote.emailed' : 'invoice.emailed',
+      entity: isQuote ? 'Quote' : 'SalesInvoice',
+      entityId: source.id,
+      metadata: { reference, to },
+    })
+
+    return { document: updated, delivered: result.delivered, mailConfigured: mailIsConfigured() }
+  })
+
+// Relance manuelle d'une facture : ignore le delai entre relances automatiques,
+// mais exige un email client.
+export const sendInvoiceReminder = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string(),
+    invoiceId: z.string(),
+  }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'invoice.update')
+    const { sendMail } = await import('./mail')
+    const { invoiceReminderEmail } = await import('./documentEmail')
+
+    const invoice = await prisma.salesInvoice.findFirst({
+      where: { id: data.invoiceId, companyId: company.id },
+      include: { customer: true },
+    })
+    if (!invoice) throw new Error('Facture introuvable.')
+    const remaining = invoice.totalCents - invoice.paidCents
+    if (remaining <= 0) throw new Error('Cette facture est deja soldee.')
+    if (!invoice.customer?.email) throw new Error('Ce client n\'a pas d\'adresse email.')
+
+    const settings = await ensureQuoteSettings(company.id, company.name)
+    const message = invoiceReminderEmail({
+      reference: invoice.number,
+      customerName: invoice.customer.name,
+      sellerName: settings.legalName || company.name,
+      dueDate: invoice.dueDate,
+      remaining,
+      currency: company.currency,
+      locale: company.locale,
+      sellerPhone: settings.phone,
+      sellerEmail: settings.email,
+    })
+    const result = await sendMail({ to: invoice.customer.email, ...message })
+    if (!result.ok) throw new Error(result.message || 'L\'email n\'a pas pu etre envoye.')
+
+    const updated = await prisma.salesInvoice.update({
+      where: { id: invoice.id },
+      data: { lastReminderAt: new Date() },
+      include: invoiceInclude,
+    })
+    await logAudit(prisma, {
+      companyId: company.id,
+      actorId: user.id,
+      action: 'invoice.reminder_sent',
+      entity: 'SalesInvoice',
+      entityId: invoice.id,
+      metadata: { number: invoice.number, remaining, to: invoice.customer.email },
+    })
+    return updated
+  })
+
+// Relance groupee : marque les factures echues « en retard » puis envoie un
+// rappel a chaque client (au plus une relance tous les 3 jours par facture).
+export const runInvoiceReminders = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ companySlug: z.string() }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'invoice.update')
+    const { processOverdueInvoices } = await import('./reminders')
+    return processOverdueInvoices(company.id, user.id)
   })
 
 export const createPosSale = createServerFn({ method: 'POST' })

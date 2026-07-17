@@ -118,6 +118,9 @@ export const getQuoteData = createServerFn({ method: 'GET' })
       phone: null,
       email: null,
       taxId: null,
+      rccm: null,
+      capital: null,
+      taxRegime: null,
       footerNote: 'Merci pour votre confiance.',
       paymentTerms: 'Validite 30 jours. Paiement selon accord commercial.',
       accentColor: '#0f172a',
@@ -127,6 +130,93 @@ export const getQuoteData = createServerFn({ method: 'GET' })
     }
 
     return { company: { id: company.id, name: company.name, slug: company.slug }, settings, quotes, customers, items }
+  })
+
+export const getInvoiceData = createServerFn({ method: 'GET' })
+  .inputValidator(z.object({ companySlug: z.string() }))
+  .handler(async ({ data }) => {
+    const companyAccess = await getCompany(data.companySlug, 'invoice.read')
+
+    // Les factures envoyees dont l'echeance est depassee passent « en retard »
+    // avant listing : la page reflete toujours l'etat reel.
+    await prisma.salesInvoice.updateMany({
+      where: {
+        companyId: companyAccess.id,
+        status: { in: ['Sent', 'PartiallyPaid'] },
+        dueDate: { lt: new Date() },
+      },
+      data: { status: 'Overdue' },
+    })
+
+    const company = await prisma.company.findUnique({
+      where: { id: companyAccess.id },
+      include: { quoteSettings: true },
+    })
+    if (!company) throw new Error('Company not found')
+
+    const [invoices, customers, items, accounts] = await Promise.all([
+      prisma.salesInvoice.findMany({
+        where: { companyId: company.id },
+        include: {
+          customer: true,
+          quote: { select: { id: true, reference: true } },
+          lines: { include: { item: true }, orderBy: { sortOrder: 'asc' } },
+          payments: { orderBy: { date: 'desc' } },
+        },
+        orderBy: { updatedAt: 'desc' },
+      }),
+      prisma.customer.findMany({ where: { companyId: company.id }, orderBy: { name: 'asc' } }),
+      prisma.catalogItem.findMany({
+        where: { companyId: company.id, status: 'Active' },
+        orderBy: { name: 'asc' },
+      }),
+      prisma.bankAccount.findMany({ where: { companyId: company.id }, orderBy: { name: 'asc' } }),
+    ])
+
+    const settings = company.quoteSettings ?? {
+      id: '',
+      companyId: company.id,
+      logoUrl: null,
+      legalName: company.name,
+      address: null,
+      phone: null,
+      email: null,
+      taxId: null,
+      rccm: null,
+      capital: null,
+      taxRegime: null,
+      footerNote: 'Merci pour votre confiance.',
+      paymentTerms: 'Validite 30 jours. Paiement selon accord commercial.',
+      accentColor: '#0f172a',
+      nextNumber: 1,
+      createdAt: company.createdAt,
+      updatedAt: company.updatedAt,
+    }
+
+    return {
+      company: { id: company.id, name: company.name, slug: company.slug },
+      settings,
+      invoices,
+      customers,
+      items,
+      accounts,
+    }
+  })
+
+// Journal d'audit : reserve aux gestionnaires, comme la page Utilisateurs.
+export const getAuditData = createServerFn({ method: 'GET' })
+  .inputValidator(z.object({ companySlug: z.string() }))
+  .handler(async ({ data }) => {
+    const company = await getCompany(data.companySlug, 'company.manage')
+
+    const logs = await prisma.auditLog.findMany({
+      where: { companyId: company.id },
+      include: { actor: { select: { name: true, email: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 300,
+    })
+
+    return { logs }
   })
 
 export const getInventoryData = createServerFn({ method: 'GET' })

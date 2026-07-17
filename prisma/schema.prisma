@@ -114,7 +114,11 @@ model Company {
   address          String?
   phone            String?
   email            String?
-  taxId            String?
+  taxId            String?             // NCC / IFU (numero contribuable)
+  rccm             String?             // Registre du commerce
+  capital          String?             // Capital social
+  taxRegime        String?             // Regime fiscal (ex: reel normal, TEE)
+  vatRate          Int?                // Taux de TVA par defaut (%), pour la ventilation HT/TVA
   website          String?
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
@@ -141,6 +145,7 @@ model Company {
   quoteSettings    QuoteSettings?
   quotes           Quote[]
   vendors          Vendor[]
+  documentCounters DocumentCounter[]
 
   @@index([workspaceId])
 }
@@ -343,6 +348,7 @@ model CatalogItem {
   price          Int
   wholesalePrice Int         @default(0)
   cost           Int         @default(0)
+  vatRate        Int? // Taux de TVA (%) propre a l'article ; null = taux par defaut du document
   stock          Int?
   minStockLevel  Int?
   imageUrl       String?
@@ -350,9 +356,10 @@ model CatalogItem {
   status         String      @default("Active") // 'Active' | 'Draft' | 'Archived'
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
-  company        Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  category       Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category       Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   quoteLines     QuoteLine[]
+  invoiceLines   InvoiceLine[]
 
   @@unique([companyId, sku])
   @@index([companyId, type])
@@ -367,6 +374,9 @@ model QuoteSettings {
   phone        String?
   email        String?
   taxId        String?
+  rccm         String?
+  capital      String?
+  taxRegime    String?
   footerNote   String   @default("Merci pour votre confiance.")
   paymentTerms String   @default("Validite 30 jours. Paiement selon accord commercial.")
   accentColor  String   @default("#0f172a")
@@ -395,9 +405,10 @@ model Quote {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
   acceptedAt    DateTime?
-  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer      Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
   lines         QuoteLine[]
+  invoices      SalesInvoice[]
 
   @@unique([companyId, reference])
   @@index([companyId, status])
@@ -412,6 +423,7 @@ model QuoteLine {
   quantity    Int
   unitPrice   Int
   totalCents  Int
+  vatRate     Int? // Taux de TVA (%) fige a la creation ; null = taux du devis
   sortOrder   Int          @default(0)
   quote       Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   item        CatalogItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
@@ -472,28 +484,68 @@ model Transaction {
 }
 
 model SalesInvoice {
-  id            String    @id @default(cuid())
-  companyId     String
-  customerId    String?
-  number        String
-  issueDate     DateTime  @default(now())
-  dueDate       DateTime?
-  status        String    @default("Draft") // 'Draft' | 'Sent' | 'PartiallyPaid' | 'Paid' | 'Overdue' | 'Cancelled'
-  subtotalCents Int       @default(0)
-  taxCents      Int       @default(0)
-  totalCents    Int       @default(0)
-  paidCents     Int       @default(0)
-  currency      String    @default("FCFA")
-  notes         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  payments      Payment[]
+  id             String        @id @default(cuid())
+  companyId      String
+  customerId     String?
+  quoteId        String? // Devis d'origine quand la facture provient d'une conversion
+  number         String
+  title          String? // Objet de la facture (repris du devis converti)
+  issueDate      DateTime      @default(now())
+  dueDate        DateTime?
+  status         String        @default("Draft") // 'Draft' | 'Sent' | 'PartiallyPaid' | 'Paid' | 'Overdue' | 'Cancelled'
+  subtotalCents  Int           @default(0)
+  discountRate   Int           @default(0)
+  taxRate        Int           @default(0) // Taux de TVA par defaut ; chaque ligne peut le surcharger
+  taxCents       Int           @default(0)
+  totalCents     Int           @default(0)
+  paidCents      Int           @default(0)
+  currency       String        @default("FCFA")
+  notes          String?
+  terms          String?
+  lastReminderAt DateTime? // Derniere relance envoyee, pour espacer les rappels
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer       Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  quote          Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  lines          InvoiceLine[]
+  payments       Payment[]
 
   @@unique([companyId, number])
   @@index([companyId, status])
   @@index([customerId])
+  @@index([quoteId])
+}
+
+model InvoiceLine {
+  id          String       @id @default(cuid())
+  invoiceId   String
+  itemId      String?
+  description String
+  quantity    Int
+  unitPrice   Int
+  totalCents  Int
+  vatRate     Int? // Taux de TVA (%) fige a la creation ; null = taux de la facture
+  sortOrder   Int          @default(0)
+  invoice     SalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  item        CatalogItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([itemId])
+}
+
+// Compteur de numerotation par type de document (facture, achat...).
+// L'increment se fait en transaction : deux documents simultanes ne peuvent
+// pas recevoir le meme numero (exigence legale de sequence sans doublon).
+model DocumentCounter {
+  id         String   @id @default(cuid())
+  companyId  String
+  kind       String // 'salesInvoice' | 'purchaseInvoice'
+  nextNumber Int      @default(1)
+  updatedAt  DateTime @updatedAt
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, kind])
 }
 
 model PurchaseInvoice {
