@@ -45,8 +45,9 @@ uniquement de l'environnement — ce que Dokploy fournit.
 | `APP_BASE_URL` | oui | URL publique, sans slash final. Sert aux liens des emails. **Obligatoire en production** : sans elle, aucun email d'invitation ni de reinitialisation n'est envoye (voir plus bas). |
 | `APP_ROOT_DOMAIN` | non | Domaine affiche a l'inscription (defaut `icomgest.cloud`). |
 | `ALLOW_PUBLIC_REGISTRATION` | non | `"true"` pour ouvrir `/register` en self-service. Defaut : ferme. |
-| `RESEND_API_KEY` | non | Sans elle, aucun email ne part : le code de verification s'ecrit dans les logs. |
-| `MAIL_FROM` | non | Expediteur, domaine verifie chez Resend. |
+| `RESEND_API_KEY` | non | Transport email Resend (gratuit : 3 000/mois, 100/jour). Prioritaire si `BREVO_API_KEY` est aussi presente. |
+| `BREVO_API_KEY` | non | Transport email Brevo (gratuit : 300/jour). Alternative a Resend. Sans aucune des deux cles, le code de verification s'ecrit dans les logs. |
+| `MAIL_FROM` | non | Expediteur `Nom <email>`, domaine verifie chez le fournisseur choisi. |
 | `R2_*` | non | Upload d'images. Sans elles, les champs image retombent sur la saisie d'URL. Voir `R2.md`. |
 | `DATABASE_POOL_MAX` | non | Taille du pool (defaut 10). |
 | `PORT` | non | Defaut 8080 (deja expose par l'image). Le port 3000 de l'hote est pris par Dokploy lui-meme. |

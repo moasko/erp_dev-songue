@@ -4,6 +4,7 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 import { getFinanceData } from '~/server/dataFetchers'
 import { createFinanceTransaction } from '~/server/operations'
+import { StatCard as StatCardBase } from '~/components/StatCard'
 import { useCompany, useMoney } from '~/context/CompanyContext'
 
 export const Route = createFileRoute('/$companySlug/finance/')({
@@ -56,7 +57,7 @@ function FinanceDashboard() {
         />
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard title="Solde disponible" value={formatMoney(totalBalance)} icon={Banknote} detail="Caisse + comptes" />
         <StatCard title="Entrees periode" value={formatMoney(totalIncome)} icon={ArrowUpRight} detail="Ventes et paiements" />
         <StatCard title="Depenses periode" value={formatMoney(totalExpense)} icon={ArrowDownRight} detail="Achats et charges" alert={totalExpense > totalIncome} />
@@ -189,16 +190,7 @@ function FinanceDashboard() {
 }
 
 function StatCard({ title, value, icon: Icon, detail, alert = false }: { title: string; value: string; icon: any; detail: string; alert?: boolean }) {
-  return (
-    <div className="rounded border border-slate-200 bg-white p-5">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400">{title}</h3>
-        <Icon className={`size-4 ${alert ? 'text-rose-500' : 'text-slate-300'}`} />
-      </div>
-      <p className="text-2xl font-bold text-slate-950">{value}</p>
-      <p className="mt-2 text-xs font-medium text-slate-500">{detail}</p>
-    </div>
-  )
+  return <StatCardBase title={title} value={value} icon={Icon} detail={detail} alert={alert} />
 }
 
 function QuickAction({ to, title, text, icon: Icon }: { to: string; title: string; text: string; icon: any }) {

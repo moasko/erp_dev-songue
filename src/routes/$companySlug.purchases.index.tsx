@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowRight, FileText, Handshake, PackageCheck, ReceiptTe
 import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 import { getPurchasesData } from '~/server/dataFetchers'
 import { useMoney } from '~/context/CompanyContext'
+import { StatCard } from '~/components/StatCard'
 import { useState } from 'react'
 
 export const Route = createFileRoute('/$companySlug/purchases/')({
@@ -61,7 +62,7 @@ function PurchasesDashboard() {
         />
       </div>
 
-      <section className="mb-6 grid gap-4 md:grid-cols-4">
+      <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Metric title="Achats periode" value={formatMoney(totalPurchases)} detail={`${periodInvoices.length} facture(s)`} icon={FileText} />
         <Metric title="A verifier" value={pendingInvoices.length.toString()} detail="Factures en attente" icon={AlertTriangle} alert={pendingInvoices.length > 0} />
         <Metric title="Fournisseurs actifs" value={activeVendors.length.toString()} detail={`${riskVendors.length} a surveiller`} icon={Truck} alert={riskVendors.length > 0} />
@@ -147,14 +148,5 @@ function PurchasesDashboard() {
 }
 
 function Metric({ title, value, detail, icon: Icon, alert = false }: { title: string; value: string; detail: string; icon: any; alert?: boolean }) {
-  return (
-    <div className="neon-surface rounded p-5">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{title}</p>
-        <Icon className={`size-4 ${alert ? 'text-rose-500' : 'text-slate-300'}`} />
-      </div>
-      <p className="text-2xl font-bold text-slate-950">{value}</p>
-      <p className="mt-2 text-xs font-medium text-slate-500">{detail}</p>
-    </div>
-  )
+  return <StatCard title={title} value={value} icon={Icon} detail={detail} alert={alert} />
 }

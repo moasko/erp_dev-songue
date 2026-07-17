@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowRight, FileCheck2, ReceiptText, ShoppingCart } from 'lucide-react'
 import { getPosData } from '~/server/dataFetchers'
 import { useMoney } from '~/context/CompanyContext'
+import { StatCard } from '~/components/StatCard'
 
 export const Route = createFileRoute('/$companySlug/sales/')({
   loader: async ({ params }) => getPosData({ data: { companySlug: params.companySlug } }),
@@ -27,7 +28,7 @@ function SalesDashboard() {
         </Link>
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3">
         <SalesMetric title="Caisse du jour" value={formatMoney(today.total)} detail={`${today.count} tickets aujourd'hui`} icon={ReceiptText} />
         <SalesMetric title="Panier moyen du jour" value={formatMoney(averageBasket)} detail="Ventes comptoir" icon={ShoppingCart} />
         <SalesMetric title="Documents" value="Devis + factures" detail="Suivi commercial simple" icon={FileCheck2} />
@@ -43,16 +44,7 @@ function SalesDashboard() {
 }
 
 function SalesMetric({ title, value, detail, icon: Icon }: { title: string; value: string; detail: string; icon: any }) {
-  return (
-    <div className="neon-surface rounded p-5">
-      <div className="mb-4 flex items-start justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">{title}</p>
-        <Icon className="size-4 text-slate-300 dark:text-slate-600" />
-      </div>
-      <p className="text-2xl font-bold text-slate-950 dark:text-white">{value}</p>
-      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">{detail}</p>
-    </div>
-  )
+  return <StatCard title={title} value={value} detail={detail} icon={Icon} />
 }
 
 function SalesAction({ to, title, text }: { to: string; title: string; text: string }) {

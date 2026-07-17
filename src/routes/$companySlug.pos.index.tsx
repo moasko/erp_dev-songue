@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowRight, BarChart3, Boxes, History, ReceiptText, ShoppingCart, Wallet } from 'lucide-react'
 import { getPosData } from '~/server/dataFetchers'
 import { useMoney } from '~/context/CompanyContext'
+import { StatCard } from '~/components/StatCard'
 
 export const Route = createFileRoute('/$companySlug/pos/')({
   loader: async ({ params }) => getPosData({ data: { companySlug: params.companySlug } }),
@@ -30,7 +31,7 @@ function PosDashboard() {
         </Link>
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <PosMetric title="Caisse du jour" value={formatMoney(today.total)} icon={Wallet} />
         <PosMetric title="Tickets du jour" value={today.count.toString()} icon={ReceiptText} />
         <PosMetric title="Panier moyen du jour" value={formatMoney(averageBasket)} icon={BarChart3} />
@@ -85,15 +86,7 @@ function PosDashboard() {
 }
 
 function PosMetric({ title, value, icon: Icon }: { title: string; value: string; icon: any }) {
-  return (
-    <div className="neon-surface rounded p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">{title}</p>
-        <Icon className="size-4 text-slate-300 dark:text-slate-600" />
-      </div>
-      <p className="text-2xl font-bold text-slate-950 dark:text-white">{value}</p>
-    </div>
-  )
+  return <StatCard title={title} value={value} icon={Icon} />
 }
 
 function PosShortcut({ to, title, text, icon: Icon }: { to: string; title: string; text: string; icon: any }) {

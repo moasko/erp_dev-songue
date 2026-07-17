@@ -19,7 +19,7 @@ function BankAccountsPage() {
         <h1 className="text-2xl font-bold text-slate-950">Comptes & caisse</h1>
         <p className="mt-1 text-sm text-slate-500">Comptes bancaires, caisse physique, cartes et soldes disponibles.</p>
       </div>
-      <div className="mb-6 grid gap-4 md:grid-cols-3">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3">
         <AccountStat title="Solde total" value={formatMoney(total)} />
         <AccountStat title="Comptes actifs" value={accounts.length.toString()} />
         <AccountStat title="Devises" value={new Set(accounts.map((account: any) => account.currency)).size.toString()} />
@@ -34,12 +34,7 @@ function BankAccountsPage() {
 }
 
 function AccountStat({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="neon-surface rounded p-5">
-      <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{title}</p>
-      <p className="mt-4 text-2xl font-bold text-slate-950">{value}</p>
-    </div>
-  )
+  return <StatCard title={title} value={value} />
 }
 
 function AccountCard({ account }: { account: any }) {

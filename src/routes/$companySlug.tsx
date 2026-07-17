@@ -125,8 +125,7 @@ const erpNavigation: Array<{ label: string; sections: SidebarSection[] }> = [
         label: 'Clients',
         icon: Contact,
         children: [
-          { path: '/crm', label: 'Resume clients', icon: LayoutDashboard, exact: true },
-          { path: '/crm/leads', label: 'Ajouter client', icon: Plus },
+          { path: '/crm', label: 'Clients', icon: Contact, exact: true },
         ],
       },
     ],

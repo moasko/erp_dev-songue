@@ -2,9 +2,13 @@
 //
 // Aucun transport n'est installe par defaut : sans configuration, le message est
 // ecrit dans la console du serveur (suffisant en dev, et l'inscription reste
-// fonctionnelle). Pour envoyer reellement, il suffit de renseigner RESEND_API_KEY
-// dans .env — l'API Resend est appelee en HTTP, sans dependance supplementaire.
-// Un autre fournisseur se branche en ajoutant un cas dans `resolveTransport`.
+// fonctionnelle). Pour envoyer reellement, il suffit de renseigner une cle d'API
+// dans .env :
+//   - RESEND_API_KEY  -> Resend  (offre gratuite : 3 000 emails/mois, 100/jour)
+//   - BREVO_API_KEY   -> Brevo   (offre gratuite : 300 emails/jour, ~9 000/mois)
+// Les deux fournisseurs sont appeles en HTTP, sans dependance supplementaire.
+// Resend est prioritaire si les deux cles sont presentes. Un autre fournisseur se
+// branche en ajoutant un cas dans `resolveTransport` et une fonction d'envoi.
 
 import { getRequestHeader } from '@tanstack/react-start/server'
 
@@ -23,10 +27,11 @@ export type MailResult = {
   message?: string
 }
 
-type Transport = 'resend' | 'console'
+type Transport = 'resend' | 'brevo' | 'console'
 
 function resolveTransport(): Transport {
   if (process.env.RESEND_API_KEY) return 'resend'
+  if (process.env.BREVO_API_KEY) return 'brevo'
   return 'console'
 }
 
@@ -38,48 +43,89 @@ function fromAddress() {
   return process.env.MAIL_FROM || 'Icomgest <onboarding@resend.dev>'
 }
 
+// Decoupe "Nom <email@domaine>" en { name, email }. Resend accepte la chaine
+// telle quelle, mais Brevo exige un expediteur structure.
+function parseFrom(): { name?: string; email: string } {
+  const raw = fromAddress()
+  const match = raw.match(/^\s*(.*?)\s*<([^>]+)>\s*$/)
+  if (match) return { name: match[1] || undefined, email: match[2].trim() }
+  return { email: raw.trim() }
+}
+
+function logToConsole(message: MailMessage): MailResult {
+  console.info(
+    [
+      '',
+      '─── Email non envoye (aucun transport configure) ───',
+      `A       : ${message.to}`,
+      `Sujet   : ${message.subject}`,
+      '',
+      message.text,
+      '───────────────────────────────────────────────────',
+      '',
+    ].join('\n'),
+  )
+  return { ok: true, delivered: false }
+}
+
+async function sendViaResend(message: MailMessage): Promise<MailResult> {
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: fromAddress(),
+      to: [message.to],
+      subject: message.subject,
+      text: message.text,
+      ...(message.html ? { html: message.html } : {}),
+    }),
+  })
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    console.error('sendMail: envoi refuse par Resend', response.status, detail)
+    return { ok: false, delivered: false, message: "L'email n'a pas pu etre envoye." }
+  }
+
+  return { ok: true, delivered: true }
+}
+
+async function sendViaBrevo(message: MailMessage): Promise<MailResult> {
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': process.env.BREVO_API_KEY as string,
+      'Content-Type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify({
+      sender: parseFrom(),
+      to: [{ email: message.to }],
+      subject: message.subject,
+      textContent: message.text,
+      ...(message.html ? { htmlContent: message.html } : {}),
+    }),
+  })
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    console.error('sendMail: envoi refuse par Brevo', response.status, detail)
+    return { ok: false, delivered: false, message: "L'email n'a pas pu etre envoye." }
+  }
+
+  return { ok: true, delivered: true }
+}
+
 export async function sendMail(message: MailMessage): Promise<MailResult> {
   const transport = resolveTransport()
 
-  if (transport === 'console') {
-    console.info(
-      [
-        '',
-        '─── Email non envoye (aucun transport configure) ───',
-        `A       : ${message.to}`,
-        `Sujet   : ${message.subject}`,
-        '',
-        message.text,
-        '───────────────────────────────────────────────────',
-        '',
-      ].join('\n'),
-    )
-    return { ok: true, delivered: false }
-  }
+  if (transport === 'console') return logToConsole(message)
 
   try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: fromAddress(),
-        to: [message.to],
-        subject: message.subject,
-        text: message.text,
-        ...(message.html ? { html: message.html } : {}),
-      }),
-    })
-
-    if (!response.ok) {
-      const detail = await response.text().catch(() => '')
-      console.error('sendMail: envoi refuse par Resend', response.status, detail)
-      return { ok: false, delivered: false, message: "L'email n'a pas pu etre envoye." }
-    }
-
-    return { ok: true, delivered: true }
+    return transport === 'brevo' ? await sendViaBrevo(message) : await sendViaResend(message)
   } catch (error) {
     console.error('sendMail: erreur reseau', error)
     return { ok: false, delivered: false, message: "L'email n'a pas pu etre envoye." }

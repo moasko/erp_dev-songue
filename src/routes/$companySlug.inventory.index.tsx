@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { type CatalogItem } from '~/domain/catalogData'
 import { getInventoryData } from '~/server/dataFetchers'
 import { useMoney } from '~/context/CompanyContext'
+import { StatCard as StatCardBase } from '~/components/StatCard'
 
 export const Route = createFileRoute('/$companySlug/inventory/')({
   loader: async ({ params }) => getInventoryData({ data: { companySlug: params.companySlug } }),
@@ -51,7 +52,7 @@ function InventoryDashboard() {
         </div>
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard title="Articles en stock" value={totalStockItems.toString()} icon={Boxes} detail="Quantite disponible" />
         <StatCard title="Valeur stock" value={formatMoney(stockValue)} icon={PackageCheck} detail="Cout d'achat estime" />
         <StatCard title="Alertes" value={priorityProducts.length.toString()} icon={AlertTriangle} detail={`${outOfStock.length} ruptures`} alert={priorityProducts.length > 0} />
@@ -165,16 +166,7 @@ function getSuggestedOrder(product: CatalogItem) {
 }
 
 function StatCard({ title, value, icon: Icon, detail, alert = false }: { title: string; value: string; icon: any; detail: string; alert?: boolean }) {
-  return (
-    <div className="rounded border border-slate-200 bg-white p-5">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{title}</p>
-        <Icon className={`size-4 ${alert ? 'text-rose-500' : 'text-slate-300'}`} />
-      </div>
-      <p className="text-2xl font-bold text-slate-950">{value}</p>
-      <p className="mt-2 text-xs font-medium text-slate-500">{detail}</p>
-    </div>
-  )
+  return <StatCardBase title={title} value={value} icon={Icon} detail={detail} alert={alert} />
 }
 
 function toCatalogItem(item: any): CatalogItem {

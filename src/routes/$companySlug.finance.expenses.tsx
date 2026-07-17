@@ -48,7 +48,7 @@ function ExpensesPage() {
           onEndDateChange={setEndDate}
         />
       </div>
-      <div className="mb-6 grid gap-4 md:grid-cols-3">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3">
         <Stat title="Total depenses" value={formatMoney(total)} />
         <Stat title="Operations" value={expenses.length.toString()} />
         <Stat title="Categories" value={categories.toString()} />
@@ -76,15 +76,7 @@ function ExpensesPage() {
 }
 
 function Stat({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="neon-surface rounded p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{title}</p>
-        <ArrowDownRight className="size-4 text-slate-400" />
-      </div>
-      <p className="text-2xl font-bold text-slate-950">{value}</p>
-    </div>
-  )
+  return <StatCard title={title} value={value} icon={ArrowDownRight} />
 }
 
 function exportTransactions(filename: string, transactions: any[]) {

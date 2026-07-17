@@ -364,7 +364,7 @@ function CatalogPage() {
         </div>
       ) : null}
 
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <SummaryCard title="Produits actifs" value={products.length.toString()} detail={`${services.length} services`} icon={Package} />
         <SummaryCard title="Valeur stock" value={formatMoney(totalStockValue)} detail="Prix x quantite" icon={Boxes} />
         <SummaryCard title="Stock faible" value={lowStock.length.toString()} detail="A commander bientot" icon={AlertTriangle} alert={lowStock.length > 0} />
@@ -697,16 +697,7 @@ function CatalogList({ items, categories, onRestock, onToggleStatus }: { items: 
 }
 
 function SummaryCard({ title, value, detail, icon: Icon, alert = false }: { title: string; value: string; detail: string; icon: any; alert?: boolean }) {
-  return (
-    <div className="rounded border border-slate-200 bg-white p-5">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{title}</p>
-        <Icon className={`size-4 ${alert ? 'text-rose-500' : 'text-slate-300'}`} />
-      </div>
-      <p className="text-2xl font-bold text-slate-950">{value}</p>
-      <p className="mt-2 text-xs font-medium text-slate-500">{detail}</p>
-    </div>
-  )
+  return <StatCard title={title} value={value} icon={Icon} detail={detail} alert={alert} />
 }
 
 function StepIndicator({ steps, currentIndex }: { steps: ProductStep[]; currentIndex: number }) {

@@ -2,7 +2,9 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import {
   AlarmClock,
   BadgeCheck,
+  Ban,
   Banknote,
+  Eye,
   FileDown,
   Mail,
   Plus,
@@ -191,41 +193,71 @@ function InvoicesPage() {
     ])
   }
 
-  // Boutons d'action d'une facture, partages entre la table (desktop) et les
-  // cartes empilees (mobile).
-  function invoiceActions(invoice: any) {
+  // Boutons d'action d'une facture. En `compact` (table desktop), chaque action
+  // devient une icone avec infobulle : la colonne Actions reste etroite meme
+  // quand une facture cumule 4 actions possibles. Les cartes mobile gardent les
+  // libelles complets (pas de survol pour lire une infobulle au doigt).
+  function invoiceActions(invoice: any, compact = false) {
     const remaining = remainingOf(invoice)
+    const actions = [
+      {
+        key: 'preview',
+        label: 'Apercu',
+        icon: Eye,
+        show: true,
+        className: 'border-slate-300 text-slate-700 hover:bg-slate-50',
+        onClick: () => { setSelectedInvoiceId(invoice.id); setActiveModal('preview') },
+      },
+      {
+        key: 'send',
+        label: 'Marquer envoyee',
+        icon: Send,
+        show: invoice.status === 'Draft',
+        className: 'border-slate-300 text-slate-700 hover:bg-slate-50',
+        onClick: () => void changeStatus(invoice.id, 'Sent'),
+      },
+      {
+        key: 'pay',
+        label: 'Encaisser',
+        icon: Banknote,
+        show: remaining > 0 && invoice.status !== 'Cancelled',
+        className: 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
+        onClick: () => { setSelectedInvoiceId(invoice.id); setActiveModal('payment') },
+      },
+      {
+        key: 'remind',
+        label: 'Relancer',
+        icon: AlarmClock,
+        show: invoice.status === 'Overdue' && remaining > 0,
+        className: 'border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100',
+        onClick: () => void remindInvoice(invoice.id),
+      },
+      {
+        key: 'cancel',
+        label: 'Annuler',
+        icon: Ban,
+        show: invoice.paidCents === 0 && invoice.status !== 'Cancelled',
+        className: 'border-slate-300 text-slate-500 hover:bg-slate-50',
+        onClick: () => void changeStatus(invoice.id, 'Cancelled'),
+      },
+    ].filter((action) => action.show)
+
     return (
       <>
-        <button
-          onClick={() => { setSelectedInvoiceId(invoice.id); setActiveModal('preview') }}
-          className="rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
-        >
-          Apercu
-        </button>
-        {invoice.status === 'Draft' ? (
-          <button onClick={() => void changeStatus(invoice.id, 'Sent')} className="rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
-            Marquer envoyee
-          </button>
-        ) : null}
-        {remaining > 0 && !['Cancelled'].includes(invoice.status) ? (
+        {actions.map(({ key, label, icon: Icon, className, onClick }) => (
           <button
-            onClick={() => { setSelectedInvoiceId(invoice.id); setActiveModal('payment') }}
-            className="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
+            key={key}
+            onClick={onClick}
+            title={label}
+            aria-label={label}
+            className={compact
+              ? `inline-flex size-8 items-center justify-center rounded border ${className}`
+              : `inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-bold ${className}`}
           >
-            Encaisser
+            <Icon className={compact ? 'size-4' : 'size-3.5'} />
+            {compact ? null : label}
           </button>
-        ) : null}
-        {invoice.status === 'Overdue' && remaining > 0 ? (
-          <button onClick={() => void remindInvoice(invoice.id)} className="rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100">
-            Relancer
-          </button>
-        ) : null}
-        {invoice.paidCents === 0 && invoice.status !== 'Cancelled' ? (
-          <button onClick={() => void changeStatus(invoice.id, 'Cancelled')} className="rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-500 hover:bg-slate-50">
-            Annuler
-          </button>
-        ) : null}
+        ))}
       </>
     )
   }
@@ -265,10 +297,7 @@ function InvoicesPage() {
         <Metric icon={AlarmClock} label="En retard" value={formatMoney(overdueTotal)} detail="Echeance depassee" />
       </div>
 
-      {/* grid-cols-1 explicite : sans lui, la piste implicite est dimensionnee
-          par le contenu (tableaux, apercu) et deborde de l'ecran en mobile. */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_480px]">
-        <section className="no-print min-w-0 overflow-hidden rounded border border-slate-200 bg-white">
+      <section className="no-print min-w-0 overflow-hidden rounded border border-slate-200 bg-white">
           <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
             <h2 className="font-bold text-slate-950">Gestion des factures</h2>
             <div className="flex items-center gap-3">
@@ -306,9 +335,9 @@ function InvoicesPage() {
                   {filteredInvoices.map((invoice) => {
                     const remaining = remainingOf(invoice)
                     return (
-                      <div key={invoice.id} className={`space-y-2.5 px-4 py-3.5 ${invoice.id === selectedInvoice?.id ? 'quote-row-selected' : ''}`}>
+                      <div key={invoice.id} className="space-y-2.5 px-4 py-3.5">
                         <div className="flex items-center justify-between gap-2">
-                          <button onClick={() => setSelectedInvoiceId(invoice.id)} className="font-bold text-slate-950">
+                          <button onClick={() => { setSelectedInvoiceId(invoice.id); setActiveModal('preview') }} className="font-bold text-slate-950">
                             {invoice.number}
                           </button>
                           <span className={`inline-flex rounded px-2 py-1 text-xs font-bold ${statusClasses[invoice.status] ?? statusClasses.Draft}`}>
@@ -333,7 +362,8 @@ function InvoicesPage() {
                 </div>
                 {/* Desktop : table complete. */}
                 <div className="hidden overflow-x-auto md:block">
-                  <table className="w-full min-w-[900px] text-left text-sm">
+                  {/* Actions en icones : la table tient sans scroll des 760px. */}
+                  <table className="w-full min-w-[760px] text-left text-sm">
                     <thead className="bg-slate-50 text-slate-500">
                       <tr>
                         <th className="px-4 py-3 font-semibold">Numero</th>
@@ -349,9 +379,9 @@ function InvoicesPage() {
                       {filteredInvoices.map((invoice) => {
                         const remaining = remainingOf(invoice)
                         return (
-                          <tr key={invoice.id} className={invoice.id === selectedInvoice?.id ? 'quote-row-selected' : 'list-row'}>
+                          <tr key={invoice.id} className="list-row">
                             <td className="px-4 py-3">
-                              <button onClick={() => setSelectedInvoiceId(invoice.id)} className="font-bold text-slate-950 hover:underline">
+                              <button onClick={() => { setSelectedInvoiceId(invoice.id); setActiveModal('preview') }} className="font-bold text-slate-950 hover:underline">
                                 {invoice.number}
                               </button>
                               <p className="mt-0.5 text-xs text-slate-500">
@@ -370,7 +400,7 @@ function InvoicesPage() {
                               </span>
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <div className="inline-flex flex-wrap justify-end gap-2">{invoiceActions(invoice)}</div>
+                              <div className="inline-flex justify-end gap-1.5">{invoiceActions(invoice, true)}</div>
                             </td>
                           </tr>
                         )
@@ -401,25 +431,39 @@ function InvoicesPage() {
           )}
         </section>
 
-        <aside className="min-w-0 rounded border border-slate-200 bg-white p-4">
-          {selectedInvoice ? (
-            <>
-              <div className="no-print mb-4 flex items-center justify-between gap-2">
-                <div>
-                  <h2 className="font-light text-slate-950">Apercu impression de facture</h2>
-                  <p className="text-xs text-slate-500">{selectedInvoice.number}</p>
-                </div>
-                <div className="flex flex-wrap justify-end gap-2">
-                  <button onClick={() => void emailInvoice(selectedInvoice.id)} className="inline-flex items-center gap-2 rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" title="Envoyer la facture par email au client">
-                    <Mail className="size-4" />
-                    Email
-                  </button>
-                  <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded bg-slate-950 px-3 py-2 text-sm font-semibold text-white">
-                    <Printer className="size-4" />
-                    Imprimer
-                  </button>
-                </div>
+      {/* L'apercu s'ouvre dans un modal plutot que dans une colonne fixe :
+          la liste garde toute la largeur et le document se consulte a la demande. */}
+      {activeModal === 'preview' && selectedInvoice ? (
+        <div className="print-modal fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 px-3 py-6 sm:px-4 sm:py-8" role="dialog" aria-modal="true">
+          <div className="w-full max-w-3xl rounded border border-slate-200 bg-white shadow-xl">
+            <div className="no-print flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-5">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">Apercu de la facture</h2>
+                <p className="text-xs text-slate-500">
+                  {selectedInvoice.number} · {statusLabels[selectedInvoice.status] ?? selectedInvoice.status}
+                </p>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => void emailInvoice(selectedInvoice.id)} className="inline-flex items-center gap-2 rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" title="Envoyer la facture par email au client">
+                  <Mail className="size-4" />
+                  Email
+                </button>
+                {remainingOf(selectedInvoice) > 0 && selectedInvoice.status !== 'Cancelled' ? (
+                  <button onClick={() => setActiveModal('payment')} className="inline-flex items-center gap-2 rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
+                    <Banknote className="size-4" />
+                    Encaisser
+                  </button>
+                ) : null}
+                <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded bg-slate-950 px-3 py-2 text-sm font-semibold text-white">
+                  <Printer className="size-4" />
+                  Imprimer
+                </button>
+                <button type="button" onClick={() => setActiveModal(null)} className="inline-flex size-9 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50" aria-label="Fermer">
+                  <X className="size-4" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 sm:p-5">
               <DocumentPrint
                 kind="invoice"
                 doc={{
@@ -438,14 +482,10 @@ function InvoicesPage() {
                 settings={data.settings}
                 companyName={data.company.name}
               />
-            </>
-          ) : (
-            <div className="no-print rounded border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
-              Selectionne ou cree une facture pour afficher l'apercu imprimable.
             </div>
-          )}
-        </aside>
-      </div>
+          </div>
+        </div>
+      ) : null}
 
       {activeModal === 'invoice' ? (
         <InvoiceModal

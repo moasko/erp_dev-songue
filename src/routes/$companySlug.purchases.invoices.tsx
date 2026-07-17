@@ -104,7 +104,7 @@ function PurchaseInvoicesPage() {
 
       {message ? <div className="mb-6 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{message}</div> : null}
 
-      <div className="mb-6 grid gap-4 md:grid-cols-3">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3">
         <Stat title="Total achats" value={formatMoney(total)} />
         <Stat title="Factures" value={filteredInvoices.length.toString()} />
         <Stat title="Categories" value={categories.toString()} detail={`${pending} a verifier`} />
@@ -228,11 +228,5 @@ function PurchaseInvoicesPage() {
 }
 
 function Stat({ title, value, detail }: { title: string; value: string; detail?: string }) {
-  return (
-    <div className="neon-surface rounded p-5">
-      <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{title}</p>
-      <p className="mt-4 text-2xl font-bold text-slate-950">{value}</p>
-      {detail ? <p className="mt-2 text-xs font-medium text-slate-500">{detail}</p> : null}
-    </div>
-  )
+  return <StatCard title={title} value={value} detail={detail} />
 }
