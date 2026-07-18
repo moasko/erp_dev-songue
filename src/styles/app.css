@@ -332,6 +332,52 @@ html:not(.theme-light) .dark\:text-emerald-300 {
   border-color: var(--app-border);
 }
 
+/* ─── Support des safe-area (encoches / barre gestuelle iOS & Android) ─── */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Barre de navigation inferieure facon app native (mobile). */
+.mobile-bottom-nav {
+  padding-bottom: env(safe-area-inset-bottom);
+  background-color: color-mix(in srgb, var(--app-panel) 96%, transparent);
+  border-color: var(--app-border);
+}
+
+/* Reserve la place de la barre inferieure pour que le contenu ne passe pas
+   dessous sur mobile (4rem de barre + safe-area). */
+@media (max-width: 1023px) {
+  .has-bottom-nav {
+    padding-bottom: calc(4.25rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* Tiroir de navigation mobile : glisse depuis la gauche. */
+.mobile-drawer {
+  background-color: var(--app-panel);
+  border-color: var(--app-border);
+  transition: transform 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.mobile-drawer-backdrop {
+  transition: opacity 260ms ease;
+}
+
+/* Retour tactile : leger enfoncement au toucher, comme une app native. */
+@media (hover: none) {
+  .tap-scale:active {
+    transform: scale(0.96);
+  }
+}
+
+.tap-scale {
+  transition: transform 120ms ease;
+}
+
 .field-label {
   margin-bottom: 0.25rem;
   display: block;

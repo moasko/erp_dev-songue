@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Banknote, CreditCard, Landmark } from 'lucide-react'
+import { StatCard } from '~/components/StatCard'
 import { getFinanceData } from '~/server/dataFetchers'
 import { useMoney } from '~/context/CompanyContext'
 

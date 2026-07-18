@@ -11,7 +11,7 @@ import { mailIsConfigured, sendMail } from './mail'
 const MESSAGE = { to: 'client@example.com', subject: 'Votre code', text: '123456' }
 
 function mockFetchOnce(response: { ok: boolean; status?: number; body?: string }) {
-  const fetchMock = vi.fn(async () => ({
+  const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
     ok: response.ok,
     status: response.status ?? (response.ok ? 200 : 400),
     text: async () => response.body ?? '',

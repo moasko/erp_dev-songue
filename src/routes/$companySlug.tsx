@@ -17,6 +17,7 @@ import {
   Landmark,
   LayoutDashboard,
   LogOut,
+  Menu,
   Moon,
   Package,
   Plus,
@@ -26,6 +27,7 @@ import {
   Sun,
   Truck,
   Users,
+  X,
 } from 'lucide-react'
 import * as React from 'react'
 import { CompanyProvider, useCompany } from '~/context/CompanyContext'
@@ -77,12 +79,13 @@ function CompanyLayout() {
 // Les autres membres ne les voient pas ; le serveur reste la garde ultime.
 const adminOnlyPaths = new Set(['/users', '/activity'])
 
-const mobileLinks = [
-  { path: '/pos/register', label: 'Caisse' },
-  { path: '/dashboard', label: 'Resume' },
-  { path: '/sales', label: 'Ventes' },
-  { path: '/inventory', label: 'Stock' },
-  { path: '/crm', label: 'Clients' },
+// Barre de navigation inferieure (mobile) facon app native. La caisse est
+// l'action centrale mise en avant (bouton vert), les autres sont des onglets.
+const bottomNavLinks: Array<{ path: string; label: string; icon: any; primary?: boolean }> = [
+  { path: '/dashboard', label: 'Resume', icon: LayoutDashboard },
+  { path: '/sales', label: 'Ventes', icon: ReceiptText },
+  { path: '/pos/register', label: 'Caisse', icon: ShoppingCart, primary: true },
+  { path: '/inventory', label: 'Stock', icon: Boxes },
 ]
 
 type SidebarChild = {
@@ -201,6 +204,7 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const [isDropdownOpen, setIsDropdownOpen] = React.useState(false)
+  const [isMobileNavOpen, setIsMobileNavOpen] = React.useState(false)
   const [showCreateCompanyModal, setShowCreateCompanyModal] = React.useState(false)
   const [theme, setTheme] = React.useState<'light' | 'dark'>(() => {
     if (typeof window === 'undefined') return 'dark'
@@ -251,6 +255,21 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
     root.style.colorScheme = theme
     window.localStorage.setItem('erp-theme', theme)
   }, [theme])
+
+  // Le tiroir mobile se ferme automatiquement quand on change de page.
+  React.useEffect(() => {
+    setIsMobileNavOpen(false)
+  }, [pathname])
+
+  // Bloque le defilement du corps quand le tiroir plein ecran est ouvert.
+  React.useEffect(() => {
+    if (!isMobileNavOpen) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [isMobileNavOpen])
 
   return (
     <div className="neon-grid min-h-screen text-slate-950">
@@ -369,12 +388,31 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
       </aside>
 
       <div className="lg:pl-[17rem]">
-        <header className="app-header sticky top-0 z-10 border-b shadow-sm backdrop-blur-xl">
-          <div className="flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
+        <header className="app-header safe-top sticky top-0 z-10 border-b shadow-sm backdrop-blur-xl">
+          <div className="flex h-14 items-center gap-2 px-4 sm:px-6 lg:px-8">
+            {/* Mobile : bouton menu + entreprise active. */}
+            <button
+              type="button"
+              onClick={() => setIsMobileNavOpen(true)}
+              className="tap-scale -ml-1 flex size-10 items-center justify-center rounded text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 lg:hidden"
+              aria-label="Ouvrir le menu"
+            >
+              <Menu className="size-5" />
+            </button>
+            <div className="flex min-w-0 items-center gap-2 lg:hidden">
+              <CompanyLogoMark
+                className="flex size-7"
+                fallbackClassName={activeCompany.color}
+                fallbackText={activeCompany.initial}
+                label={activeCompany.name}
+                logoUrl={activeCompany.logoUrl}
+              />
+              <span className="block max-w-[9rem] truncate text-sm font-bold text-slate-950">{activeCompany.name}</span>
+            </div>
             <div className="hidden min-w-0 flex-1 justify-center px-4 md:flex">
               <GlobalSearch companySlug={companySlug} />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-2">
               <ThemeSwitch theme={theme} onToggle={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} />
               <Link
                 to="/$companySlug/settings"
@@ -388,25 +426,240 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
               </div>
             </div>
           </div>
-          <div className="flex gap-1.5 overflow-x-auto border-t border-slate-100 px-4 py-2 lg:hidden">
-            {mobileLinks.map((item) => (
-              <Link
-                key={item.path}
-                to={`/${companySlug}${item.path}` as any}
-                className="shrink-0 rounded border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300"
-                activeProps={{ className: 'border-slate-950 bg-slate-950 text-white hover:border-slate-950' }}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
           <div className="border-t border-slate-100 px-4 py-2 md:hidden">
             <GlobalSearch companySlug={companySlug} />
           </div>
         </header>
-        <main>{children}</main>
+        <main className="has-bottom-nav">{children}</main>
       </div>
+
+      {/* ─── Navigation mobile facon app native ─── */}
+      <MobileDrawer
+        isOpen={isMobileNavOpen}
+        onClose={() => setIsMobileNavOpen(false)}
+        companySlug={companySlug}
+        navigation={navigation}
+        currentSubPath={currentSubPath}
+        companies={auth.companies}
+        activeCompany={activeCompany}
+        isOwner={Boolean(auth.user?.isOwner)}
+        onSwitchCompany={(slug) => {
+          setIsMobileNavOpen(false)
+          void navigate({ to: buildCompanyPath(slug) as any })
+        }}
+        onCreateCompany={() => {
+          setIsMobileNavOpen(false)
+          setShowCreateCompanyModal(true)
+        }}
+        onLogout={async () => {
+          await logout()
+          await navigate({ to: '/login', search: { redirect: undefined } })
+        }}
+      />
+      <MobileBottomNav companySlug={companySlug} currentSubPath={currentSubPath} onOpenMenu={() => setIsMobileNavOpen(true)} />
+
       <CreateCompanyModal isOpen={showCreateCompanyModal} onClose={() => setShowCreateCompanyModal(false)} />
+    </div>
+  )
+}
+
+function MobileBottomNav({
+  companySlug,
+  currentSubPath,
+  onOpenMenu,
+}: {
+  companySlug: string
+  currentSubPath: string
+  onOpenMenu: () => void
+}) {
+  return (
+    <nav className="mobile-bottom-nav fixed inset-x-0 bottom-0 z-30 border-t shadow-lg backdrop-blur-xl lg:hidden">
+      <div className="mx-auto flex h-16 max-w-lg items-stretch justify-around px-1">
+        {bottomNavLinks.map((item) => {
+          const Icon = item.icon
+          const active = isPathActive(currentSubPath, item.path)
+
+          if (item.primary) {
+            return (
+              <Link
+                key={item.path}
+                to={`/${companySlug}${item.path}` as any}
+                className="tap-scale flex flex-1 flex-col items-center justify-end gap-1 pb-1.5"
+              >
+                <span className="-mt-7 flex size-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-lg ring-4 ring-[color:var(--app-bg)]">
+                  <Icon className="size-6" />
+                </span>
+                <span className={`text-[10px] font-bold ${active ? 'text-slate-950' : 'text-slate-500'}`}>{item.label}</span>
+              </Link>
+            )
+          }
+
+          return (
+            <Link
+              key={item.path}
+              to={`/${companySlug}${item.path}` as any}
+              className={`tap-scale flex flex-1 flex-col items-center justify-center gap-1 ${active ? 'text-slate-950' : 'text-slate-400'}`}
+            >
+              <Icon className="size-5" />
+              <span className={`text-[10px] ${active ? 'font-bold' : 'font-semibold'}`}>{item.label}</span>
+            </Link>
+          )
+        })}
+        <button
+          type="button"
+          onClick={onOpenMenu}
+          className="tap-scale flex flex-1 flex-col items-center justify-center gap-1 text-slate-400"
+        >
+          <Menu className="size-5" />
+          <span className="text-[10px] font-semibold">Menu</span>
+        </button>
+      </div>
+    </nav>
+  )
+}
+
+function MobileDrawer({
+  isOpen,
+  onClose,
+  companySlug,
+  navigation,
+  currentSubPath,
+  companies,
+  activeCompany,
+  isOwner,
+  onSwitchCompany,
+  onCreateCompany,
+  onLogout,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  companySlug: string
+  navigation: Array<{ label: string; sections: SidebarSection[] }>
+  currentSubPath: string
+  companies: any[]
+  activeCompany: any
+  isOwner: boolean
+  onSwitchCompany: (slug: string) => void
+  onCreateCompany: () => void
+  onLogout: () => void | Promise<void>
+}) {
+  return (
+    <div className={`fixed inset-0 z-40 lg:hidden ${isOpen ? '' : 'pointer-events-none'}`} aria-hidden={!isOpen}>
+      <div
+        className={`mobile-drawer-backdrop absolute inset-0 bg-slate-950/50 backdrop-blur-sm ${isOpen ? 'opacity-100' : 'opacity-0'}`}
+        onClick={onClose}
+      />
+      <aside
+        className={`mobile-drawer safe-top absolute inset-y-0 left-0 flex w-[86%] max-w-xs flex-col border-r shadow-2xl ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <CompanyLogoMark
+              className="flex size-9"
+              fallbackClassName={activeCompany.color}
+              fallbackText={activeCompany.initial}
+              label={activeCompany.name}
+              logoUrl={activeCompany.logoUrl}
+            />
+            <div className="flex min-w-0 flex-col">
+              <span className="truncate text-sm font-bold text-slate-950">{activeCompany.name}</span>
+              <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-500">{activeCompany.group}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fermer le menu"
+            className="tap-scale flex size-9 shrink-0 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-3 py-3">
+          <div className="space-y-1">
+            <SidebarLink to={`/${companySlug}/pos/register`} icon={ShoppingCart} featured>
+              Nouvelle vente
+            </SidebarLink>
+            <SidebarLink to={`/${companySlug}/dashboard`} icon={LayoutDashboard}>
+              Resume
+            </SidebarLink>
+          </div>
+
+          <div className="mt-5 space-y-4">
+            {navigation.map((group) => (
+              <div key={group.label}>
+                <h2 className="px-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  {group.label}
+                </h2>
+                <div className="mt-2 space-y-1">
+                  {group.sections.map((section) => (
+                    <SidebarMenu
+                      key={section.label}
+                      section={section}
+                      companySlug={companySlug}
+                      currentSubPath={currentSubPath}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {companies.length > 1 ? (
+            <div className="mt-5">
+              <h2 className="px-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Vos entreprises
+              </h2>
+              <div className="mt-2 space-y-1">
+                {companies.map((company) => (
+                  <button
+                    key={company.id}
+                    type="button"
+                    onClick={() => onSwitchCompany(company.slug)}
+                    className="flex w-full items-center justify-between gap-2 rounded px-3 py-2 text-sm transition-colors hover:bg-slate-100"
+                  >
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <CompanyLogoMark
+                        className="flex size-6"
+                        fallbackClassName="bg-slate-950"
+                        fallbackText={company.name.slice(0, 2).toUpperCase()}
+                        label={company.name}
+                        logoUrl={company.logoUrl}
+                      />
+                      <span className={`truncate font-semibold ${company.slug === companySlug ? 'text-slate-950' : 'text-slate-600'}`}>
+                        {company.name}
+                      </span>
+                    </span>
+                    {company.slug === companySlug ? <Check className="size-4 shrink-0 text-slate-950" /> : null}
+                  </button>
+                ))}
+                {isOwner ? (
+                  <button
+                    type="button"
+                    onClick={onCreateCompany}
+                    className="flex w-full items-center gap-2 rounded px-3 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950"
+                  >
+                    <Plus className="size-4" />
+                    Ajouter une activité
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="safe-bottom border-t border-slate-200 p-3">
+          <button
+            type="button"
+            onClick={onLogout}
+            className="flex w-full items-center gap-2.5 rounded px-3 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950"
+          >
+            <LogOut className="size-4" />
+            Deconnexion
+          </button>
+        </div>
+      </aside>
     </div>
   )
 }

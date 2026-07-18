@@ -18,6 +18,7 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
+import { StatCard } from '~/components/StatCard'
 import { type CatalogCategory, type CatalogItem, type CatalogItemStatus, type CatalogItemType } from '~/domain/catalogData'
 import { getCatalogData } from '~/server/dataFetchers'
 import { createCatalogCategory, createCatalogItem, restockCatalogItem, updateCatalogItemStatus } from '~/server/operations'
