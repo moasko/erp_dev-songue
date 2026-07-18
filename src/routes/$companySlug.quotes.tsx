@@ -24,6 +24,7 @@ import { ImageUploadField } from '~/components/ImageUploadField'
 import { DocumentPrint } from '~/components/DocumentPrint'
 import { computeDocumentTotals } from '~/utils/documentTotals'
 import { downloadCsv } from '~/utils/csvExport'
+import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 
 export const Route = createFileRoute('/$companySlug/quotes')({
   loader: async ({ params }) => getQuoteData({ data: { companySlug: params.companySlug } }),
@@ -74,6 +75,9 @@ function QuotesPage() {
   const [searchTerm, setSearchTerm] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>('All')
   const [sortBy, setSortBy] = React.useState<QuoteSort>('updated')
+  const [datePreset, setDatePreset] = React.useState<DatePreset>('all')
+  const [startDate, setStartDate] = React.useState(todayInputValue())
+  const [endDate, setEndDate] = React.useState(todayInputValue())
 
   const selectedQuote = quotes.find((quote) => quote.id === selectedQuoteId) ?? quotes[0] ?? null
   const acceptedTotal = quotes.filter((quote) => quote.status === 'Accepted').reduce((sum, quote) => sum + quote.totalCents, 0)
@@ -83,13 +87,14 @@ function QuotesPage() {
     return quotes
       .filter((quote) => {
         const matchesStatus = statusFilter === 'All' || quote.status === statusFilter
+        const matchesDate = matchesDatePreset(quote.issueDate, datePreset, startDate, endDate)
         const searchable = [
           quote.reference,
           quote.customer?.name,
           quote.customer?.email,
           quote.title,
         ].filter(Boolean).join(' ').toLowerCase()
-        return matchesStatus && (!query || searchable.includes(query))
+        return matchesStatus && matchesDate && (!query || searchable.includes(query))
       })
       .sort((first, second) => {
         if (sortBy === 'validUntil') return new Date(first.validUntil).getTime() - new Date(second.validUntil).getTime()
@@ -97,7 +102,7 @@ function QuotesPage() {
         if (sortBy === 'amountAsc') return first.totalCents - second.totalCents
         return new Date(second.updatedAt).getTime() - new Date(first.updatedAt).getTime()
       })
-  }, [quotes, searchTerm, sortBy, statusFilter])
+  }, [quotes, searchTerm, sortBy, statusFilter, datePreset, startDate, endDate])
 
   async function refresh() {
     const nextData = await getQuoteData({ data: { companySlug } })
@@ -217,26 +222,36 @@ function QuotesPage() {
           </div>
           {quotes.length ? (
             <div>
-              <div className="grid gap-3 border-b border-slate-100 p-4 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
-                <label className="relative block">
-                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Rechercher reference, client ou objet..."
-                    className="field-input pl-9"
-                  />
-                </label>
-                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)} className="field-input">
-                  <option value="All">Tous les statuts</option>
-                  {Object.entries(statusLabels).map(([status, label]) => <option key={status} value={status}>{label}</option>)}
-                </select>
-                <select value={sortBy} onChange={(event) => setSortBy(event.target.value as QuoteSort)} className="field-input">
-                  <option value="updated">Derniere activite</option>
-                  <option value="validUntil">Validite proche</option>
-                  <option value="amountDesc">Montant decroissant</option>
-                  <option value="amountAsc">Montant croissant</option>
-                </select>
+              <div className="space-y-3 border-b border-slate-100 p-4">
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+                  <label className="relative block">
+                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={searchTerm}
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      placeholder="Rechercher reference, client ou objet..."
+                      className="field-input pl-9"
+                    />
+                  </label>
+                  <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)} className="field-input">
+                    <option value="All">Tous les statuts</option>
+                    {Object.entries(statusLabels).map(([status, label]) => <option key={status} value={status}>{label}</option>)}
+                  </select>
+                  <select value={sortBy} onChange={(event) => setSortBy(event.target.value as QuoteSort)} className="field-input">
+                    <option value="updated">Derniere activite</option>
+                    <option value="validUntil">Validite proche</option>
+                    <option value="amountDesc">Montant decroissant</option>
+                    <option value="amountAsc">Montant croissant</option>
+                  </select>
+                </div>
+                <DateRangeFilter
+                  preset={datePreset}
+                  startDate={startDate}
+                  endDate={endDate}
+                  onPresetChange={setDatePreset}
+                  onStartDateChange={setStartDate}
+                  onEndDateChange={setEndDate}
+                />
               </div>
 
               {filteredQuotes.length ? (
@@ -335,7 +350,7 @@ function QuotesPage() {
               ) : (
                 <div className="px-5 py-10 text-center">
                   <p className="font-semibold text-slate-800">Aucun devis ne correspond aux filtres.</p>
-                  <button onClick={() => { setSearchTerm(''); setStatusFilter('All') }} className="mt-3 rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                  <button onClick={() => { setSearchTerm(''); setStatusFilter('All'); setDatePreset('all') }} className="mt-3 rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
                     Reinitialiser la recherche
                   </button>
                 </div>

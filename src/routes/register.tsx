@@ -2,13 +2,10 @@ import { Link, createFileRoute, redirect, useNavigate } from '@tanstack/react-ro
 import { ArrowRight, LockKeyhole, Mail, UserRound } from 'lucide-react'
 import * as React from 'react'
 import {
-  AuthCard,
-  AuthShell,
-  BrandMark,
+  AuthLogo,
+  AuthSplitShell,
   ErrorBanner,
   Field,
-  PageHeading,
-  Stepper,
   SubmitButton,
 } from '~/components/AuthShell'
 import { getInstallationState, registerOwner } from '~/server/auth'
@@ -28,17 +25,24 @@ export const Route = createFileRoute('/register')({
 // une fois l'adresse email confirmee (/verify).
 function RegisterPage() {
   const navigate = useNavigate()
-  const [name, setName] = React.useState('')
+  const [firstName, setFirstName] = React.useState('')
+  const [lastName, setLastName] = React.useState('')
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
+  const [accepted, setAccepted] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!accepted) {
+      setError("Vous devez accepter les conditions d'utilisation.")
+      return
+    }
     setIsSubmitting(true)
     setError(null)
 
+    const name = `${firstName.trim()} ${lastName.trim()}`.trim()
     const result = await registerOwner({ data: { name, email, password } })
 
     if (!result?.ok) {
@@ -58,59 +62,70 @@ function RegisterPage() {
   }
 
   return (
-    <AuthShell>
-      <BrandMark subtitle="Creation de votre espace" />
-      <AuthCard>
-        <Stepper current={1} />
-        <PageHeading title="Creez votre compte" description="Commencons par vous. La boutique arrive juste apres." />
+    <AuthSplitShell
+      headline="Lancez votre boutique en quelques minutes."
+      subhead="Creez votre compte, ajoutez vos produits et encaissez des aujourd'hui."
+    >
+      <AuthLogo />
+      <p className="text-xs font-bold uppercase tracking-widest text-[#048038]">Etape 1 sur 2</p>
+      <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">Creer un compte</h1>
+      <p className="mt-2 text-sm text-slate-500">
+        Deja un compte ?{' '}
+        <Link to="/login" search={{ redirect: undefined }} className="font-semibold text-[#048038] hover:underline">
+          Se connecter
+        </Link>
+      </p>
 
-        <form onSubmit={handleSubmit} className="mt-7 grid gap-4">
-          <Field
-            icon={UserRound}
-            label="Nom complet"
-            value={name}
-            onChange={setName}
-            placeholder="Awa Kone"
-            autoComplete="name"
-            minLength={2}
+      <form onSubmit={handleSubmit} className="mt-8 grid gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field icon={UserRound} label="Prenom" value={firstName} onChange={setFirstName} placeholder="Awa" autoComplete="given-name" minLength={2} />
+          <Field icon={UserRound} label="Nom" value={lastName} onChange={setLastName} placeholder="Kone" autoComplete="family-name" />
+        </div>
+        <Field
+          icon={Mail}
+          label="Adresse email"
+          value={email}
+          onChange={setEmail}
+          type="email"
+          placeholder="nom@entreprise.com"
+          autoComplete="email"
+          hint="Un code de confirmation y sera envoye."
+        />
+        <Field
+          icon={LockKeyhole}
+          label="Mot de passe"
+          value={password}
+          onChange={setPassword}
+          type="password"
+          placeholder="10 caracteres minimum"
+          autoComplete="new-password"
+          minLength={10}
+        />
+
+        <label className="flex items-start gap-2.5 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={accepted}
+            onChange={(event) => setAccepted(event.target.checked)}
+            className="mt-0.5 size-4 shrink-0 rounded border-slate-300 accent-[#0a1728]"
           />
-          <Field
-            icon={Mail}
-            label="Email professionnel"
-            value={email}
-            onChange={setEmail}
-            type="email"
-            placeholder="nom@entreprise.com"
-            autoComplete="email"
-            hint="Un code de confirmation y sera envoye."
-          />
-          <Field
-            icon={LockKeyhole}
-            label="Mot de passe"
-            value={password}
-            onChange={setPassword}
-            type="password"
-            placeholder="10 caracteres minimum"
-            autoComplete="new-password"
-            minLength={10}
-          />
+          <span>
+            J'accepte les{' '}
+            <Link to="/privacy" className="font-semibold text-[#048038] hover:underline">
+              conditions d'utilisation
+            </Link>
+            .
+          </span>
+        </label>
 
-          <ErrorBanner message={error} />
+        <ErrorBanner message={error} />
 
-          <div className="mt-2">
-            <SubmitButton isSubmitting={isSubmitting} icon={ArrowRight}>
-              {isSubmitting ? 'Creation...' : 'Continuer'}
-            </SubmitButton>
-          </div>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-slate-500">
-          Vous avez deja un compte ?{' '}
-          <Link to="/login" search={{ redirect: undefined }} className="font-semibold text-slate-950 hover:underline">
-            Se connecter
-          </Link>
-        </p>
-      </AuthCard>
-    </AuthShell>
+        <div className="mt-1">
+          <SubmitButton isSubmitting={isSubmitting} disabled={!accepted} icon={ArrowRight} variant="brand">
+            {isSubmitting ? 'Creation...' : 'Creer un compte'}
+          </SubmitButton>
+        </div>
+      </form>
+    </AuthSplitShell>
   )
 }

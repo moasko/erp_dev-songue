@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { History, Search } from 'lucide-react'
 import * as React from 'react'
 import { getAuditData } from '~/server/dataFetchers'
+import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 
 export const Route = createFileRoute('/$companySlug/activity')({
   loader: async ({ params }) => getAuditData({ data: { companySlug: params.companySlug } }),
@@ -34,11 +35,15 @@ const entityLabels: Record<string, string> = {
 function ActivityPage() {
   const { logs } = Route.useLoaderData()
   const [searchTerm, setSearchTerm] = React.useState('')
+  const [datePreset, setDatePreset] = React.useState<DatePreset>('all')
+  const [startDate, setStartDate] = React.useState(todayInputValue())
+  const [endDate, setEndDate] = React.useState(todayInputValue())
 
   const filteredLogs = React.useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
-    if (!query) return logs
     return logs.filter((log: any) => {
+      if (!matchesDatePreset(log.createdAt, datePreset, startDate, endDate)) return false
+      if (!query) return true
       const searchable = [
         actionLabels[log.action] ?? log.action,
         entityLabels[log.entity] ?? log.entity,
@@ -48,7 +53,7 @@ function ActivityPage() {
       ].filter(Boolean).join(' ').toLowerCase()
       return searchable.includes(query)
     })
-  }, [logs, searchTerm])
+  }, [logs, searchTerm, datePreset, startDate, endDate])
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
@@ -61,7 +66,7 @@ function ActivityPage() {
       </div>
 
       <section className="overflow-hidden rounded border border-slate-200 bg-white">
-        <div className="border-b border-slate-100 p-4">
+        <div className="space-y-3 border-b border-slate-100 p-4">
           <label className="relative block max-w-md">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <input
@@ -71,6 +76,14 @@ function ActivityPage() {
               className="field-input pl-9"
             />
           </label>
+          <DateRangeFilter
+            preset={datePreset}
+            startDate={startDate}
+            endDate={endDate}
+            onPresetChange={setDatePreset}
+            onStartDateChange={setStartDate}
+            onEndDateChange={setEndDate}
+          />
         </div>
 
         {filteredLogs.length ? (

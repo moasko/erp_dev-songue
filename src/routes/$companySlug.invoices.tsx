@@ -30,6 +30,7 @@ import { useMoney } from '~/context/CompanyContext'
 import { DocumentPrint } from '~/components/DocumentPrint'
 import { computeDocumentTotals } from '~/utils/documentTotals'
 import { downloadCsv } from '~/utils/csvExport'
+import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 
 export const Route = createFileRoute('/$companySlug/invoices')({
   loader: async ({ params }) => getInvoiceData({ data: { companySlug: params.companySlug } }),
@@ -80,6 +81,9 @@ function InvoicesPage() {
   const [message, setMessage] = React.useState('')
   const [searchTerm, setSearchTerm] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>('All')
+  const [datePreset, setDatePreset] = React.useState<DatePreset>('all')
+  const [startDate, setStartDate] = React.useState(todayInputValue())
+  const [endDate, setEndDate] = React.useState(todayInputValue())
 
   const selectedInvoice = invoices.find((invoice) => invoice.id === selectedInvoiceId) ?? invoices[0] ?? null
 
@@ -94,6 +98,7 @@ function InvoicesPage() {
     const query = searchTerm.trim().toLowerCase()
     return invoices.filter((invoice) => {
       const matchesStatus = statusFilter === 'All' || invoice.status === statusFilter
+      const matchesDate = matchesDatePreset(invoice.issueDate, datePreset, startDate, endDate)
       const searchable = [
         invoice.number,
         invoice.customer?.name,
@@ -101,9 +106,9 @@ function InvoicesPage() {
         invoice.title,
         invoice.quote?.reference,
       ].filter(Boolean).join(' ').toLowerCase()
-      return matchesStatus && (!query || searchable.includes(query))
+      return matchesStatus && matchesDate && (!query || searchable.includes(query))
     })
-  }, [invoices, searchTerm, statusFilter])
+  }, [invoices, searchTerm, statusFilter, datePreset, startDate, endDate])
 
   async function refresh() {
     const nextData = await getInvoiceData({ data: { companySlug } })
@@ -312,20 +317,30 @@ function InvoicesPage() {
           </div>
           {invoices.length ? (
             <div>
-              <div className="grid gap-3 border-b border-slate-100 p-4 lg:grid-cols-[minmax(0,1fr)_200px]">
-                <label className="relative block">
-                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Rechercher numero, client ou objet..."
-                    className="field-input pl-9"
-                  />
-                </label>
-                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)} className="field-input">
-                  <option value="All">Tous les statuts</option>
-                  {Object.entries(statusLabels).map(([status, label]) => <option key={status} value={status}>{label}</option>)}
-                </select>
+              <div className="space-y-3 border-b border-slate-100 p-4">
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_200px]">
+                  <label className="relative block">
+                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={searchTerm}
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      placeholder="Rechercher numero, client ou objet..."
+                      className="field-input pl-9"
+                    />
+                  </label>
+                  <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)} className="field-input">
+                    <option value="All">Tous les statuts</option>
+                    {Object.entries(statusLabels).map(([status, label]) => <option key={status} value={status}>{label}</option>)}
+                  </select>
+                </div>
+                <DateRangeFilter
+                  preset={datePreset}
+                  startDate={startDate}
+                  endDate={endDate}
+                  onPresetChange={setDatePreset}
+                  onStartDateChange={setStartDate}
+                  onEndDateChange={setEndDate}
+                />
               </div>
 
               {filteredInvoices.length ? (
@@ -412,7 +427,7 @@ function InvoicesPage() {
               ) : (
                 <div className="px-5 py-10 text-center">
                   <p className="font-semibold text-slate-800">Aucune facture ne correspond aux filtres.</p>
-                  <button onClick={() => { setSearchTerm(''); setStatusFilter('All') }} className="mt-3 rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                  <button onClick={() => { setSearchTerm(''); setStatusFilter('All'); setDatePreset('all') }} className="mt-3 rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
                     Reinitialiser la recherche
                   </button>
                 </div>

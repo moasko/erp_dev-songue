@@ -2,12 +2,10 @@ import { Link, createFileRoute, redirect, useNavigate } from '@tanstack/react-ro
 import { LockKeyhole, Mail } from 'lucide-react'
 import * as React from 'react'
 import {
-  AuthCard,
-  AuthShell,
-  BrandMark,
+  AuthLogo,
+  AuthSplitShell,
   ErrorBanner,
   Field,
-  PageHeading,
   SubmitButton,
 } from '~/components/AuthShell'
 import { getAuthState, getInstallationState, login } from '~/server/auth'
@@ -90,58 +88,58 @@ function LoginPage() {
   }
 
   return (
-    <AuthShell>
-      <BrandMark subtitle="Application de gestion" />
-      <AuthCard>
-        <PageHeading title="Connexion" description="Entrez dans votre espace de travail." />
+    <AuthSplitShell
+      headline="Pilotez toute votre boutique."
+      subhead="Caisse, ventes, stock, factures et clients reunis dans un seul espace de travail."
+    >
+      <AuthLogo />
+      <h1 className="text-3xl font-black tracking-tight text-slate-950">Connexion</h1>
+      <p className="mt-2 text-sm text-slate-500">
+        Pas encore de compte ?{' '}
+        <Link to="/register" className="font-semibold text-[#048038] hover:underline">
+          Creez votre espace
+        </Link>
+      </p>
 
-        <form onSubmit={handleSubmit} className="mt-7 grid gap-4">
-          <Field
-            icon={Mail}
-            label="Email"
-            value={email}
-            onChange={setEmail}
-            type="email"
-            autoComplete="email"
-            placeholder="nom@entreprise.com"
-          />
+      <form onSubmit={handleSubmit} className="mt-8 grid gap-4">
+        <Field
+          icon={Mail}
+          label="Email"
+          value={email}
+          onChange={setEmail}
+          type="email"
+          autoComplete="email"
+          placeholder="nom@entreprise.com"
+        />
+        <Field
+          icon={LockKeyhole}
+          label="Mot de passe"
+          value={password}
+          onChange={setPassword}
+          type="password"
+          autoComplete="current-password"
+          placeholder="Votre mot de passe"
+        />
+
+        {needsTotp ? (
           <Field
             icon={LockKeyhole}
-            label="Mot de passe"
-            value={password}
-            onChange={setPassword}
-            type="password"
-            autoComplete="current-password"
-            placeholder="Votre mot de passe"
+            label="Code de verification (2FA)"
+            value={totpCode}
+            onChange={setTotpCode}
+            autoComplete="one-time-code"
+            placeholder="Code a 6 chiffres"
           />
+        ) : null}
 
-          {needsTotp ? (
-            <Field
-              icon={LockKeyhole}
-              label="Code de verification (2FA)"
-              value={totpCode}
-              onChange={setTotpCode}
-              autoComplete="one-time-code"
-              placeholder="Code a 6 chiffres"
-            />
-          ) : null}
+        <ErrorBanner message={error} />
 
-          <ErrorBanner message={error} />
-
-          <div className="mt-2">
-            <SubmitButton isSubmitting={isSubmitting}>
-              {isSubmitting ? 'Connexion...' : 'Se connecter'}
-            </SubmitButton>
-          </div>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-slate-500">
-          Premiere utilisation ?{' '}
-          <Link to="/register" className="font-semibold text-slate-950 hover:underline">
-            Creer votre espace
-          </Link>
-        </p>
-      </AuthCard>
-    </AuthShell>
+        <div className="mt-2">
+          <SubmitButton isSubmitting={isSubmitting} variant="brand">
+            {isSubmitting ? 'Connexion...' : 'Se connecter'}
+          </SubmitButton>
+        </div>
+      </form>
+    </AuthSplitShell>
   )
 }

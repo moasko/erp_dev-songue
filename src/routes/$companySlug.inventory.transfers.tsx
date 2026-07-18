@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Search, ArrowRight, ArrowRightLeft } from 'lucide-react'
 import { useState } from 'react'
 import { getInventoryData } from '~/server/dataFetchers'
+import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 
 export const Route = createFileRoute('/$companySlug/inventory/transfers')({
   loader: async ({ params }) => getInventoryData({ data: { companySlug: params.companySlug } }),
@@ -11,11 +12,15 @@ export const Route = createFileRoute('/$companySlug/inventory/transfers')({
 function InventoryTransfers() {
   const data = Route.useLoaderData()
   const [query, setQuery] = useState('')
+  const [datePreset, setDatePreset] = useState<DatePreset>('all')
+  const [startDate, setStartDate] = useState(todayInputValue())
+  const [endDate, setEndDate] = useState(todayInputValue())
 
   const itemNames = new Map<string, string>(data.items.map((item: any) => [item.id, item.name]))
   const warehouseNames = new Map<string, string>(data.warehouses.map((warehouse: any) => [warehouse.id, warehouse.name]))
 
   const movements = data.movements.filter((movement: any) => {
+    if (!matchesDatePreset(movement.date, datePreset, startDate, endDate)) return false
     const itemName = itemNames.get(movement.itemId) ?? ''
     return `${movement.reference} ${itemName} ${movement.reason ?? ''}`.toLowerCase().includes(query.toLowerCase())
   })
@@ -29,8 +34,8 @@ function InventoryTransfers() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-4 mb-6">
-        <div className="relative flex-1 max-w-md">
+      <div className="mb-6 space-y-3">
+        <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
           <input
             type="text"
@@ -40,6 +45,14 @@ function InventoryTransfers() {
             className="w-full rounded border border-slate-300 pl-9 pr-4 py-2 text-sm focus:border-slate-950 outline-none"
           />
         </div>
+        <DateRangeFilter
+          preset={datePreset}
+          startDate={startDate}
+          endDate={endDate}
+          onPresetChange={setDatePreset}
+          onStartDateChange={setStartDate}
+          onEndDateChange={setEndDate}
+        />
       </div>
 
       <div className="rounded border border-slate-200 bg-white overflow-hidden">

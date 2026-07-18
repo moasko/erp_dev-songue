@@ -3,6 +3,7 @@ import { Check, ListPlus, Mail, PhoneCall, Plus, Search, Star, Users, X } from '
 import { useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react'
 import { getCrmData } from '~/server/dataFetchers'
 import { createCrmLead } from '~/server/operations'
+import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 
 export const Route = createFileRoute('/$companySlug/crm/')({
   loader: async ({ params }) => getCrmData({ data: { companySlug: params.companySlug } }),
@@ -19,6 +20,9 @@ function CrmPage() {
   const [leads, setLeads] = useState<any[]>(data.leads)
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
+  const [datePreset, setDatePreset] = useState<DatePreset>('all')
+  const [startDate, setStartDate] = useState(todayInputValue())
+  const [endDate, setEndDate] = useState(todayInputValue())
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [form, setForm] = useState({ name: '', company: '', email: '', phone: '', source: 'POS' })
@@ -28,8 +32,9 @@ function CrmPage() {
 
   const visibleLeads = leads.filter((lead) => {
     const matchesStatus = statusFilter === 'All' || lead.status === statusFilter
+    const matchesDate = matchesDatePreset(lead.createdAt, datePreset, startDate, endDate)
     const searchable = `${lead.name} ${lead.company ?? ''} ${lead.email ?? ''} ${lead.phone ?? ''}`.toLowerCase()
-    return matchesStatus && searchable.includes(query.toLowerCase())
+    return matchesStatus && matchesDate && searchable.includes(query.toLowerCase())
   })
 
   async function addLead(event: FormEvent<HTMLFormElement>) {
@@ -70,28 +75,38 @@ function CrmPage() {
       </div>
 
       <section className="neon-surface overflow-hidden rounded">
-        <div className="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-[minmax(0,1fr)_170px] dark:border-slate-800">
-          <label className="relative block">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              type="text"
-              placeholder="Rechercher nom, entreprise, email, telephone..."
-              className="w-full rounded border border-slate-300 bg-white py-2 pl-9 pr-4 text-sm outline-none focus:border-slate-950 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:border-cyan-400"
-            />
-          </label>
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-            className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:border-slate-950 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-          >
-            <option value="All">Tous les statuts</option>
-            <option value="New">Nouveau</option>
-            <option value="Contacted">Contacte</option>
-            <option value="Qualified">Qualifie</option>
-            <option value="Lost">Perdu</option>
-          </select>
+        <div className="space-y-3 border-b border-slate-100 p-4 dark:border-slate-800">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_170px]">
+            <label className="relative block">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                type="text"
+                placeholder="Rechercher nom, entreprise, email, telephone..."
+                className="w-full rounded border border-slate-300 bg-white py-2 pl-9 pr-4 text-sm outline-none focus:border-slate-950 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:border-cyan-400"
+              />
+            </label>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:border-slate-950 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+            >
+              <option value="All">Tous les statuts</option>
+              <option value="New">Nouveau</option>
+              <option value="Contacted">Contacte</option>
+              <option value="Qualified">Qualifie</option>
+              <option value="Lost">Perdu</option>
+            </select>
+          </div>
+          <DateRangeFilter
+            preset={datePreset}
+            startDate={startDate}
+            endDate={endDate}
+            onPresetChange={setDatePreset}
+            onStartDateChange={setStartDate}
+            onEndDateChange={setEndDate}
+          />
         </div>
 
         {visibleLeads.length ? (

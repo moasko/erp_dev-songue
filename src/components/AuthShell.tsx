@@ -1,5 +1,15 @@
 import * as React from 'react'
-import type { LucideIcon } from 'lucide-react'
+import {
+  BarChart3,
+  Boxes,
+  CircleDollarSign,
+  Contact,
+  FileCheck2,
+  ReceiptText,
+  ShoppingCart,
+  Truck,
+  type LucideIcon,
+} from 'lucide-react'
 
 // Coque commune aux pages d'inscription, de verification et de creation de
 // boutique. `auth-light` force les tokens clairs : ces pages sont hors du layout
@@ -9,6 +19,75 @@ export function AuthShell({ children, wide = false }: { children: React.ReactNod
     <main className="auth-light grid min-h-screen place-items-center px-4 py-10">
       <section className={`w-full ${wide ? 'max-w-xl' : 'max-w-md'}`}>{children}</section>
     </main>
+  )
+}
+
+// Modules mis en avant sur le panneau de marque (facon "pilules" produit).
+const modulePills: Array<{ label: string; icon: LucideIcon; color: string }> = [
+  { label: 'Caisse', icon: ShoppingCart, color: 'bg-emerald-100 text-emerald-700' },
+  { label: 'Ventes', icon: ReceiptText, color: 'bg-blue-100 text-blue-700' },
+  { label: 'Devis', icon: FileCheck2, color: 'bg-violet-100 text-violet-700' },
+  { label: 'Stock', icon: Boxes, color: 'bg-amber-100 text-amber-700' },
+  { label: 'Clients', icon: Contact, color: 'bg-teal-100 text-teal-700' },
+  { label: 'Achats', icon: Truck, color: 'bg-rose-100 text-rose-700' },
+  { label: 'Finance', icon: CircleDollarSign, color: 'bg-indigo-100 text-indigo-700' },
+  { label: 'Rapports', icon: BarChart3, color: 'bg-slate-200 text-slate-700' },
+]
+
+// Coque "split" pour la connexion et l'inscription : panneau de marque a gauche
+// (masque sous lg, ou la place revient au formulaire), formulaire a droite.
+export function AuthSplitShell({
+  children,
+  headline,
+  subhead,
+}: {
+  children: React.ReactNode
+  headline: string
+  subhead: string
+}) {
+  return (
+    <main className="auth-light min-h-screen bg-white p-3 sm:p-5">
+      <div className="mx-auto grid min-h-[calc(100vh-1.5rem)] max-w-7xl gap-5 sm:min-h-[calc(100vh-2.5rem)] lg:grid-cols-2">
+        <aside className="relative hidden overflow-hidden rounded-3xl bg-[#00fe68] p-10 lg:flex lg:flex-col lg:justify-center xl:p-14">
+          <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 size-72 rounded-full bg-white/25 blur-2xl" />
+          <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-10 size-80 rounded-full bg-black/5 blur-3xl" />
+          <div className="relative">
+            <h2 className="max-w-md text-4xl font-black leading-[1.1] tracking-tight text-[#0a1728] xl:text-5xl">
+              {headline}
+            </h2>
+            <p className="mt-4 max-w-sm text-base font-medium text-[#0a1728]/75">{subhead}</p>
+            <div className="mt-9 flex max-w-md flex-wrap gap-2.5">
+              {modulePills.map(({ label, icon: Icon, color }) => (
+                <span
+                  key={label}
+                  className="inline-flex items-center gap-2 rounded-xl bg-white py-1.5 pl-1.5 pr-3.5 text-sm font-bold text-[#0a1728] shadow-sm"
+                >
+                  <span className={`grid size-7 place-items-center rounded-lg ${color}`}>
+                    <Icon className="size-4" />
+                  </span>
+                  {label}
+                </span>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        <div className="flex items-center justify-center px-1 py-8 sm:px-6 lg:py-6">
+          <div className="w-full max-w-md">{children}</div>
+        </div>
+      </div>
+    </main>
+  )
+}
+
+// Logo + nom, en haut du formulaire (visible aussi sur mobile ou le panneau de
+// marque est masque).
+export function AuthLogo() {
+  return (
+    <div className="mb-8 flex items-center gap-2.5">
+      <img src="/logo.png" alt="" width={32} height={32} className="size-8 shrink-0 object-contain" />
+      <span className="text-lg font-extrabold tracking-tight text-slate-950">Icomgest</span>
+    </div>
   )
 }
 
@@ -125,17 +204,24 @@ export function SubmitButton({
   isSubmitting,
   disabled = false,
   icon: Icon,
+  variant = 'primary',
 }: {
   children: React.ReactNode
   isSubmitting: boolean
   disabled?: boolean
   icon?: LucideIcon
+  // 'brand' : vert Icomgest sur texte bleu nuit (pages de connexion/inscription).
+  variant?: 'primary' | 'brand'
 }) {
+  const styles =
+    variant === 'brand'
+      ? 'bg-[#00fe68] text-[#0a1728] font-bold hover:bg-[#00e25d]'
+      : 'bg-slate-950 text-white font-semibold hover:bg-slate-800'
   return (
     <button
       type="submit"
       disabled={disabled || isSubmitting}
-      className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+      className={`inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg px-4 text-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${styles}`}
     >
       {children}
       {Icon && !isSubmitting ? <Icon className="size-4" /> : null}

@@ -229,7 +229,7 @@ export const getInventoryData = createServerFn({ method: 'GET' })
       prisma.stockMovement.findMany({
         where: { companyId: company.id },
         orderBy: { date: 'desc' },
-        take: 20,
+        take: 200,
       }),
       prisma.catalogItem.findMany({
         where: { companyId: company.id, type: 'Product' },

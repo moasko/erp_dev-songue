@@ -1,4 +1,4 @@
-export type DatePreset = 'today' | 'yesterday' | 'week' | 'month' | 'custom'
+export type DatePreset = 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'year' | 'custom'
 
 type DateRangeFilterProps = {
   preset: DatePreset
@@ -10,10 +10,12 @@ type DateRangeFilterProps = {
 }
 
 const presets: { value: DatePreset; label: string }[] = [
+  { value: 'all', label: 'Tout' },
   { value: 'today', label: "Aujourd'hui" },
   { value: 'yesterday', label: 'Hier' },
   { value: 'week', label: 'Cette semaine' },
   { value: 'month', label: 'Ce mois' },
+  { value: 'year', label: 'Cette annee' },
   { value: 'custom', label: 'Personnaliser' },
 ]
 
@@ -88,6 +90,12 @@ function getDateRange(preset: DatePreset, customStart: string, customEnd: string
   const start = startOfDay(now)
   const end = endOfDay(now)
 
+  // 'Tout' : bornes tres larges pour ne rien exclure (matchesDatePreset renvoie
+  // alors toujours vrai, getDateRangeBounds couvre tout l'historique).
+  if (preset === 'all') {
+    return { start: new Date(0), end: endOfDay(new Date(9999, 11, 31)) }
+  }
+
   if (preset === 'yesterday') {
     start.setDate(start.getDate() - 1)
     end.setDate(end.getDate() - 1)
@@ -101,6 +109,10 @@ function getDateRange(preset: DatePreset, customStart: string, customEnd: string
 
   if (preset === 'month') {
     start.setDate(1)
+  }
+
+  if (preset === 'year') {
+    start.setMonth(0, 1)
   }
 
   if (preset === 'custom') {
