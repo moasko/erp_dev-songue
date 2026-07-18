@@ -3,6 +3,7 @@ import { Banknote, Boxes, Contact, ReceiptText, ShoppingCart } from 'lucide-reac
 import type { LucideIcon } from 'lucide-react'
 import { getDashboardData } from '~/server/dashboard'
 import { useCompany, useMoney } from '~/context/CompanyContext'
+import { TOUR_START_EVENT } from '~/components/OnboardingTour'
 
 export const Route = createFileRoute('/$companySlug/dashboard')({
   loader: async ({ params }) => getDashboardData({ data: { companySlug: params.companySlug } }),
@@ -44,15 +45,24 @@ function DashboardPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mb-6">
-        <p className="text-sm font-semibold text-slate-500">{activeCompany.name}</p>
-        <h1 className="mt-1 text-2xl font-bold text-slate-950">Resume du jour</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-          Les chiffres utiles pour piloter les ventes, le stock et les paiements sans bruit.
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-500">{activeCompany.name}</p>
+          <h1 className="mt-1 text-2xl font-bold text-slate-950">Resume du jour</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            Les chiffres utiles pour piloter les ventes, le stock et les paiements sans bruit.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event(TOUR_START_EVENT))}
+          className="inline-flex h-9 shrink-0 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950"
+        >
+          Revoir le guide
+        </button>
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section data-tour="dashboard-metrics" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard icon={Banknote} label="Argent disponible" value={formatMoney(balance)} />
         <MetricCard icon={ReceiptText} label="Ventes enregistrees" value={formatMoney(monthIncome)} />
         <MetricCard icon={Boxes} label="Stock bas" value={lowStockCount.toString()} />

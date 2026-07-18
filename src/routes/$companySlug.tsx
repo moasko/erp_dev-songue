@@ -33,6 +33,7 @@ import * as React from 'react'
 import { CompanyProvider, useCompany } from '~/context/CompanyContext'
 import { GlobalSearch } from '~/components/GlobalSearch'
 import { getCompanyAuthState, logout, createCompany } from '~/server/auth'
+import { OnboardingTour } from '~/components/OnboardingTour'
 
 export const Route = createFileRoute('/$companySlug')({
   beforeLoad: async ({ params, location }) => {
@@ -342,9 +343,9 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
           )}
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-3">
+        <nav data-tour="sidebar-nav" className="flex-1 overflow-y-auto px-3 py-3">
           <div className="space-y-1">
-            <SidebarLink to={`/${companySlug}/pos/register`} icon={ShoppingCart} featured>
+            <SidebarLink to={`/${companySlug}/pos/register`} icon={ShoppingCart} featured dataTour="new-sale">
               Nouvelle vente
             </SidebarLink>
             <SidebarLink to={`/${companySlug}/dashboard`} icon={LayoutDashboard}>
@@ -409,7 +410,7 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
               />
               <span className="block max-w-[9rem] truncate text-sm font-bold text-slate-950">{activeCompany.name}</span>
             </div>
-            <div className="hidden min-w-0 flex-1 justify-center px-4 md:flex">
+            <div data-tour="search" className="hidden min-w-0 flex-1 justify-center px-4 md:flex">
               <GlobalSearch companySlug={companySlug} />
             </div>
             <div className="ml-auto flex items-center gap-2">
@@ -417,6 +418,7 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
               <Link
                 to="/$companySlug/settings"
                 params={{ companySlug }}
+                data-tour="settings"
                 className="hidden h-9 items-center rounded border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 sm:inline-flex"
               >
                 Parametres
@@ -459,6 +461,8 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
       <MobileBottomNav companySlug={companySlug} currentSubPath={currentSubPath} onOpenMenu={() => setIsMobileNavOpen(true)} />
 
       <CreateCompanyModal isOpen={showCreateCompanyModal} onClose={() => setShowCreateCompanyModal(false)} />
+
+      <OnboardingTour />
     </div>
   )
 }
@@ -780,16 +784,19 @@ function SidebarLink({
   children,
   badge,
   featured = false,
+  dataTour,
 }: {
   to: string
   icon: any
   children: React.ReactNode
   badge?: string
   featured?: boolean
+  dataTour?: string
 }) {
   return (
     <Link
       to={to as any}
+      {...(dataTour ? { 'data-tour': dataTour } : {})}
       activeProps={{
         className: featured
           ? 'bg-slate-950 text-white font-bold'

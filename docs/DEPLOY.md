@@ -46,7 +46,7 @@ uniquement de l'environnement — ce que Dokploy fournit.
 | `APP_ROOT_DOMAIN` | non | Domaine affiche a l'inscription (defaut `icomgest.cloud`). |
 | `ALLOW_PUBLIC_REGISTRATION` | non | `"true"` pour ouvrir `/register` en self-service. Defaut : ferme. |
 | `RESEND_API_KEY` | non | Transport email Resend (gratuit : 3 000/mois, 100/jour). Prioritaire si `BREVO_API_KEY` est aussi presente. |
-| `BREVO_API_KEY` | non | Transport email Brevo (gratuit : 300/jour). Alternative a Resend. Sans aucune des deux cles, le code de verification s'ecrit dans les logs. |
+| `BREVO_API_KEY` | non | Transport email Brevo (gratuit : 300/jour). Alternative a Resend. Sans aucune des deux cles, le code de verification s'ecrit dans les logs. **Brevo bloque les IP non autorisees par defaut** : autoriser l'IP du serveur (ou desactiver la restriction) sur https://app.brevo.com/security/authorised_ips, sinon l'envoi echoue avec « Unauthorized IP address ». |
 | `MAIL_FROM` | non | Expediteur `Nom <email>`, domaine verifie chez le fournisseur choisi. |
 | `R2_*` | non | Upload d'images. Sans elles, les champs image retombent sur la saisie d'URL. Voir `R2.md`. |
 | `DATABASE_POOL_MAX` | non | Taille du pool (defaut 10). |
