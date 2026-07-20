@@ -15,11 +15,18 @@ import { Route as RegisterRouteImport } from './routes/register'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as CompanySlugRouteImport } from './routes/$companySlug'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as CompanySlugIndexRouteImport } from './routes/$companySlug.index'
 import { Route as ResetTokenRouteImport } from './routes/reset.$token'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as AdminUsersRouteImport } from './routes/admin.users'
+import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
+import { Route as AdminRolesRouteImport } from './routes/admin.roles'
+import { Route as AdminCompaniesRouteImport } from './routes/admin.companies'
+import { Route as AdminActivityRouteImport } from './routes/admin.activity'
 import { Route as CompanySlugUsersRouteImport } from './routes/$companySlug.users'
 import { Route as CompanySlugSettingsRouteImport } from './routes/$companySlug.settings'
 import { Route as CompanySlugSalesRouteImport } from './routes/$companySlug.sales'
@@ -110,6 +117,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CompanySlugRoute = CompanySlugRouteImport.update({
   id: '/$companySlug',
   path: '/$companySlug',
@@ -119,6 +131,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRoute,
 } as any)
 const CompanySlugIndexRoute = CompanySlugIndexRouteImport.update({
   id: '/',
@@ -134,6 +151,31 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
   path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminSettingsRoute = AdminSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminRolesRoute = AdminRolesRouteImport.update({
+  id: '/roles',
+  path: '/roles',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminCompaniesRoute = AdminCompaniesRouteImport.update({
+  id: '/companies',
+  path: '/companies',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminActivityRoute = AdminActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => AdminRoute,
 } as any)
 const CompanySlugUsersRoute = CompanySlugUsersRouteImport.update({
   id: '/users',
@@ -456,6 +498,7 @@ const CompanySlugAccountingChartOfAccountsRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$companySlug': typeof CompanySlugRouteWithChildren
+  '/admin': typeof AdminRouteWithChildren
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
@@ -480,9 +523,15 @@ export interface FileRoutesByFullPath {
   '/$companySlug/sales': typeof CompanySlugSalesRouteWithChildren
   '/$companySlug/settings': typeof CompanySlugSettingsRoute
   '/$companySlug/users': typeof CompanySlugUsersRoute
+  '/admin/activity': typeof AdminActivityRoute
+  '/admin/companies': typeof AdminCompaniesRoute
+  '/admin/roles': typeof AdminRolesRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset/$token': typeof ResetTokenRoute
   '/$companySlug/': typeof CompanySlugIndexRoute
+  '/admin/': typeof AdminIndexRoute
   '/$companySlug/accounting/chart-of-accounts': typeof CompanySlugAccountingChartOfAccountsRoute
   '/$companySlug/accounting/ledger': typeof CompanySlugAccountingLedgerRoute
   '/$companySlug/accounting/profit-loss': typeof CompanySlugAccountingProfitLossRoute
@@ -543,9 +592,15 @@ export interface FileRoutesByTo {
   '/$companySlug/reports': typeof CompanySlugReportsRoute
   '/$companySlug/settings': typeof CompanySlugSettingsRoute
   '/$companySlug/users': typeof CompanySlugUsersRoute
+  '/admin/activity': typeof AdminActivityRoute
+  '/admin/companies': typeof AdminCompaniesRoute
+  '/admin/roles': typeof AdminRolesRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset/$token': typeof ResetTokenRoute
   '/$companySlug': typeof CompanySlugIndexRoute
+  '/admin': typeof AdminIndexRoute
   '/$companySlug/accounting/chart-of-accounts': typeof CompanySlugAccountingChartOfAccountsRoute
   '/$companySlug/accounting/ledger': typeof CompanySlugAccountingLedgerRoute
   '/$companySlug/accounting/profit-loss': typeof CompanySlugAccountingProfitLossRoute
@@ -592,6 +647,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$companySlug': typeof CompanySlugRouteWithChildren
+  '/admin': typeof AdminRouteWithChildren
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
@@ -616,9 +672,15 @@ export interface FileRoutesById {
   '/$companySlug/sales': typeof CompanySlugSalesRouteWithChildren
   '/$companySlug/settings': typeof CompanySlugSettingsRoute
   '/$companySlug/users': typeof CompanySlugUsersRoute
+  '/admin/activity': typeof AdminActivityRoute
+  '/admin/companies': typeof AdminCompaniesRoute
+  '/admin/roles': typeof AdminRolesRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset/$token': typeof ResetTokenRoute
   '/$companySlug/': typeof CompanySlugIndexRoute
+  '/admin/': typeof AdminIndexRoute
   '/$companySlug/accounting/chart-of-accounts': typeof CompanySlugAccountingChartOfAccountsRoute
   '/$companySlug/accounting/ledger': typeof CompanySlugAccountingLedgerRoute
   '/$companySlug/accounting/profit-loss': typeof CompanySlugAccountingProfitLossRoute
@@ -666,6 +728,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$companySlug'
+    | '/admin'
     | '/login'
     | '/onboarding'
     | '/privacy'
@@ -690,9 +753,15 @@ export interface FileRouteTypes {
     | '/$companySlug/sales'
     | '/$companySlug/settings'
     | '/$companySlug/users'
+    | '/admin/activity'
+    | '/admin/companies'
+    | '/admin/roles'
+    | '/admin/settings'
+    | '/admin/users'
     | '/invite/$token'
     | '/reset/$token'
     | '/$companySlug/'
+    | '/admin/'
     | '/$companySlug/accounting/chart-of-accounts'
     | '/$companySlug/accounting/ledger'
     | '/$companySlug/accounting/profit-loss'
@@ -753,9 +822,15 @@ export interface FileRouteTypes {
     | '/$companySlug/reports'
     | '/$companySlug/settings'
     | '/$companySlug/users'
+    | '/admin/activity'
+    | '/admin/companies'
+    | '/admin/roles'
+    | '/admin/settings'
+    | '/admin/users'
     | '/invite/$token'
     | '/reset/$token'
     | '/$companySlug'
+    | '/admin'
     | '/$companySlug/accounting/chart-of-accounts'
     | '/$companySlug/accounting/ledger'
     | '/$companySlug/accounting/profit-loss'
@@ -801,6 +876,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/$companySlug'
+    | '/admin'
     | '/login'
     | '/onboarding'
     | '/privacy'
@@ -825,9 +901,15 @@ export interface FileRouteTypes {
     | '/$companySlug/sales'
     | '/$companySlug/settings'
     | '/$companySlug/users'
+    | '/admin/activity'
+    | '/admin/companies'
+    | '/admin/roles'
+    | '/admin/settings'
+    | '/admin/users'
     | '/invite/$token'
     | '/reset/$token'
     | '/$companySlug/'
+    | '/admin/'
     | '/$companySlug/accounting/chart-of-accounts'
     | '/$companySlug/accounting/ledger'
     | '/$companySlug/accounting/profit-loss'
@@ -874,6 +956,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CompanySlugRoute: typeof CompanySlugRouteWithChildren
+  AdminRoute: typeof AdminRouteWithChildren
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   PrivacyRoute: typeof PrivacyRoute
@@ -928,6 +1011,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/$companySlug': {
       id: '/$companySlug'
       path: '/$companySlug'
@@ -941,6 +1031,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/$companySlug/': {
       id: '/$companySlug/'
@@ -962,6 +1059,41 @@ declare module '@tanstack/react-router' {
       fullPath: '/invite/$token'
       preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/settings': {
+      id: '/admin/settings'
+      path: '/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AdminSettingsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/roles': {
+      id: '/admin/roles'
+      path: '/roles'
+      fullPath: '/admin/roles'
+      preLoaderRoute: typeof AdminRolesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/companies': {
+      id: '/admin/companies'
+      path: '/companies'
+      fullPath: '/admin/companies'
+      preLoaderRoute: typeof AdminCompaniesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/activity': {
+      id: '/admin/activity'
+      path: '/activity'
+      fullPath: '/admin/activity'
+      preLoaderRoute: typeof AdminActivityRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/$companySlug/users': {
       id: '/$companySlug/users'
@@ -1589,9 +1721,30 @@ const CompanySlugRouteWithChildren = CompanySlugRoute._addFileChildren(
   CompanySlugRouteChildren,
 )
 
+interface AdminRouteChildren {
+  AdminActivityRoute: typeof AdminActivityRoute
+  AdminCompaniesRoute: typeof AdminCompaniesRoute
+  AdminRolesRoute: typeof AdminRolesRoute
+  AdminSettingsRoute: typeof AdminSettingsRoute
+  AdminUsersRoute: typeof AdminUsersRoute
+  AdminIndexRoute: typeof AdminIndexRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminActivityRoute: AdminActivityRoute,
+  AdminCompaniesRoute: AdminCompaniesRoute,
+  AdminRolesRoute: AdminRolesRoute,
+  AdminSettingsRoute: AdminSettingsRoute,
+  AdminUsersRoute: AdminUsersRoute,
+  AdminIndexRoute: AdminIndexRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CompanySlugRoute: CompanySlugRouteWithChildren,
+  AdminRoute: AdminRouteWithChildren,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   PrivacyRoute: PrivacyRoute,

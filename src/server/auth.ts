@@ -53,6 +53,7 @@ export type AuthState = {
     name: string
     email: string
     isOwner: boolean
+    isSuperAdmin: boolean
   } | null
   companies: AuthCompany[]
 }

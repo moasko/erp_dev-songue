@@ -19,8 +19,28 @@ export type SessionCompany = {
 export type SessionContext = {
   sessionId: string
   expiresAt: Date
-  user: { id: string; name: string; email: string; isOwner: boolean }
+  user: { id: string; name: string; email: string; isOwner: boolean; isSuperAdmin: boolean }
   companies: SessionCompany[]
+}
+
+// Super administrateurs de la plateforme : au-dessus des entreprises, ils gerent
+// l'ensemble (tenants, utilisateurs, sante systeme). L'appartenance est controlee
+// par la variable d'environnement SUPER_ADMIN_EMAILS (emails separes par des
+// virgules), jamais par un secret en dur ni un bouton dans l'interface : c'est une
+// decision d'exploitation. Pour activer, ajouter son email a SUPER_ADMIN_EMAILS
+// dans .env puis redemarrer le serveur.
+export function platformAdminEmails(): Set<string> {
+  return new Set(
+    String(process.env.SUPER_ADMIN_EMAILS ?? '')
+      .split(',')
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean),
+  )
+}
+
+export function isPlatformAdminEmail(email: string): boolean {
+  const emails = platformAdminEmails()
+  return emails.has(email.trim().toLowerCase())
 }
 
 // Cache de session en memoire (par processus), meme compromis que rateLimit.ts :
@@ -95,6 +115,7 @@ async function loadSessionContext(tokenHash: string): Promise<SessionContext | n
       name: session.user.name,
       email: session.user.email,
       isOwner: session.user.isOwner,
+      isSuperAdmin: isPlatformAdminEmail(session.user.email),
     },
     companies: session.user.memberships.map((membership) => ({
       id: membership.company.id,
@@ -173,4 +194,15 @@ export async function requireCompanyAccess(companySlug: string, permission?: str
     company,
     permissions,
   }
+}
+
+// Garde serveur pour l'espace super admin : toute server function de la plateforme
+// doit l'appeler en premier. La verification se fait cote serveur a partir de la
+// session (email dans SUPER_ADMIN_EMAILS), jamais a partir d'un indicateur envoye
+// par le client.
+export async function requirePlatformAdmin() {
+  const context = await getSessionContext()
+  if (!context) throw new Error('Authentication required')
+  if (!context.user.isSuperAdmin) throw new Error('Platform admin access denied')
+  return context
 }

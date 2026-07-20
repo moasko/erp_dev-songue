@@ -23,6 +23,7 @@ import {
   Plus,
   ReceiptText,
   Settings,
+  ShieldAlert,
   ShoppingCart,
   Sun,
   Truck,
@@ -351,6 +352,11 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
             <SidebarLink to={`/${companySlug}/dashboard`} icon={LayoutDashboard}>
               Resume
             </SidebarLink>
+            {auth.user?.isSuperAdmin ? (
+              <SidebarLink to="/admin" icon={ShieldAlert} badge="Plateforme">
+                Super admin
+              </SidebarLink>
+            ) : null}
           </div>
 
           <div className="mt-5 space-y-4">
@@ -445,6 +451,7 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
         companies={auth.companies}
         activeCompany={activeCompany}
         isOwner={Boolean(auth.user?.isOwner)}
+        isSuperAdmin={Boolean(auth.user?.isSuperAdmin)}
         onSwitchCompany={(slug) => {
           setIsMobileNavOpen(false)
           void navigate({ to: buildCompanyPath(slug) as any })
@@ -531,6 +538,7 @@ function MobileDrawer({
   companies,
   activeCompany,
   isOwner,
+  isSuperAdmin,
   onSwitchCompany,
   onCreateCompany,
   onLogout,
@@ -543,6 +551,7 @@ function MobileDrawer({
   companies: any[]
   activeCompany: any
   isOwner: boolean
+  isSuperAdmin: boolean
   onSwitchCompany: (slug: string) => void
   onCreateCompany: () => void
   onLogout: () => void | Promise<void>
@@ -588,6 +597,11 @@ function MobileDrawer({
             <SidebarLink to={`/${companySlug}/dashboard`} icon={LayoutDashboard}>
               Resume
             </SidebarLink>
+            {isSuperAdmin ? (
+              <SidebarLink to="/admin" icon={ShieldAlert} badge="Plateforme">
+                Super admin
+              </SidebarLink>
+            ) : null}
           </div>
 
           <div className="mt-5 space-y-4">
