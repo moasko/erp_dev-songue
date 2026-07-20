@@ -134,14 +134,36 @@ export const getPlatformOverview = createServerFn({ method: 'GET' }).handler(asy
   }
 })
 
-// Tous les tenants (entreprises) avec leur workspace, proprietaire et volumetrie.
+// Statut de cycle de vie d'une entreprise, DERIVE des donnees existantes (aucune
+// colonne dediee sur Company, la base distante etant partagee) :
+//   - 'SUSPENDED' : l'entreprise a des membres mais aucun n'est ACTIVE. La
+//     suspension bascule tous les CompanyMembership en 'SUSPENDED' ; comme la
+//     session ne charge que les memberships ACTIVE (access.ts), l'acces est
+//     reellement coupe pour tous les membres.
+//   - 'ACTIVE'    : au moins un membre actif.
+//   - 'EMPTY'     : aucun membre (cas limite).
+function deriveCompanyStatus(statuses: string[]): 'ACTIVE' | 'SUSPENDED' | 'EMPTY' {
+  if (statuses.length === 0) return 'EMPTY'
+  const active = statuses.filter((status) => status === 'ACTIVE').length
+  if (active === 0) return 'SUSPENDED'
+  return 'ACTIVE'
+}
+
+// Tous les tenants (entreprises) avec leur workspace, proprietaire, statut et volumetrie.
 export const listPlatformCompanies = createServerFn({ method: 'GET' }).handler(async () => {
   await requirePlatformAdmin()
 
   const companies = await prisma.company.findMany({
     orderBy: { createdAt: 'desc' },
     include: {
-      workspace: { select: { name: true, slug: true, owner: { select: { name: true, email: true } } } },
+      workspace: {
+        select: {
+          name: true,
+          slug: true,
+          owner: { select: { id: true, name: true, email: true, emailVerifiedAt: true } },
+        },
+      },
+      memberships: { select: { status: true } },
       _count: {
         select: {
           memberships: true,
@@ -156,25 +178,158 @@ export const listPlatformCompanies = createServerFn({ method: 'GET' }).handler(a
 
   return {
     ok: true as const,
-    companies: companies.map((company) => ({
-      id: company.id,
-      name: company.name,
-      slug: company.slug,
-      subdomain: company.subdomain,
-      currency: company.currency,
-      country: company.country,
-      createdAt: company.createdAt.toISOString(),
-      workspaceName: company.workspace?.name ?? null,
-      ownerName: company.workspace?.owner?.name ?? null,
-      ownerEmail: company.workspace?.owner?.email ?? null,
-      members: company._count.memberships,
-      invoices: company._count.salesInvoices,
-      customers: company._count.customers,
-      modules: company._count.modules,
-      roles: company._count.roles,
-    })),
+    companies: companies.map((company) => {
+      const statuses = company.memberships.map((membership) => membership.status)
+      return {
+        id: company.id,
+        name: company.name,
+        slug: company.slug,
+        subdomain: company.subdomain,
+        currency: company.currency,
+        country: company.country,
+        createdAt: company.createdAt.toISOString(),
+        workspaceName: company.workspace?.name ?? null,
+        ownerName: company.workspace?.owner?.name ?? null,
+        ownerEmail: company.workspace?.owner?.email ?? null,
+        ownerVerified: Boolean(company.workspace?.owner?.emailVerifiedAt),
+        status: deriveCompanyStatus(statuses),
+        activeMembers: statuses.filter((status) => status === 'ACTIVE').length,
+        members: company._count.memberships,
+        invoices: company._count.salesInvoices,
+        customers: company._count.customers,
+        modules: company._count.modules,
+        roles: company._count.roles,
+      }
+    }),
   }
 })
+
+// Detail complet d'une entreprise : profil, proprietaire, membres, volumetrie,
+// activite recente et motif de suspension courant (lu dans le journal d'audit).
+export const getPlatformCompanyDetail = createServerFn({ method: 'GET' })
+  .inputValidator(z.object({ companyId: z.string().min(1) }))
+  .handler(async ({ data }) => {
+    await requirePlatformAdmin()
+
+    const company = await prisma.company.findUnique({
+      where: { id: data.companyId },
+      include: {
+        workspace: {
+          select: {
+            name: true,
+            slug: true,
+            owner: { select: { id: true, name: true, email: true, emailVerifiedAt: true, lastLoginAt: true } },
+          },
+        },
+        memberships: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            user: { select: { name: true, email: true, lastLoginAt: true } },
+            roles: { select: { role: { select: { name: true } } } },
+          },
+        },
+        _count: {
+          select: {
+            memberships: true,
+            salesInvoices: true,
+            quotes: true,
+            customers: true,
+            employees: true,
+            items: true,
+            warehouses: true,
+            vendors: true,
+            purchaseInvoices: true,
+          },
+        },
+      },
+    })
+    if (!company) return { ok: false as const, message: 'Entreprise introuvable.' }
+
+    const statuses = company.memberships.map((membership) => membership.status)
+    const status = deriveCompanyStatus(statuses)
+
+    // Motif de suspension : derniere entree d'audit 'company.suspended' non suivie
+    // d'une reactivation. On lit simplement la plus recente suspension.
+    let suspendReason: string | null = null
+    if (status === 'SUSPENDED') {
+      const lastSuspension = await prisma.auditLog.findFirst({
+        where: { companyId: company.id, action: 'company.suspended' },
+        orderBy: { createdAt: 'desc' },
+      })
+      if (lastSuspension?.metadata) {
+        try {
+          suspendReason = (JSON.parse(lastSuspension.metadata).reason as string) ?? null
+        } catch {
+          suspendReason = null
+        }
+      }
+    }
+
+    const recentActivity = await prisma.auditLog.findMany({
+      where: { companyId: company.id },
+      orderBy: { createdAt: 'desc' },
+      take: 15,
+      include: { actor: { select: { name: true, email: true } } },
+    })
+
+    return {
+      ok: true as const,
+      company: {
+        id: company.id,
+        name: company.name,
+        slug: company.slug,
+        subdomain: company.subdomain,
+        legalName: company.legalName,
+        email: company.email,
+        phone: company.phone,
+        address: company.address,
+        taxId: company.taxId,
+        rccm: company.rccm,
+        currency: company.currency,
+        country: company.country,
+        website: company.website,
+        createdAt: company.createdAt.toISOString(),
+        status,
+        suspendReason,
+        workspaceName: company.workspace?.name ?? null,
+        owner: company.workspace?.owner
+          ? {
+              id: company.workspace.owner.id,
+              name: company.workspace.owner.name,
+              email: company.workspace.owner.email,
+              verified: Boolean(company.workspace.owner.emailVerifiedAt),
+              lastLoginAt: company.workspace.owner.lastLoginAt?.toISOString() ?? null,
+            }
+          : null,
+      },
+      counts: {
+        members: company._count.memberships,
+        invoices: company._count.salesInvoices,
+        quotes: company._count.quotes,
+        customers: company._count.customers,
+        employees: company._count.employees,
+        items: company._count.items,
+        warehouses: company._count.warehouses,
+        vendors: company._count.vendors,
+        purchases: company._count.purchaseInvoices,
+      },
+      members: company.memberships.map((membership) => ({
+        id: membership.id,
+        name: membership.user.name,
+        email: membership.user.email,
+        status: membership.status,
+        roles: membership.roles.map((userRole) => userRole.role.name),
+        lastLoginAt: membership.user.lastLoginAt?.toISOString() ?? null,
+      })),
+      recentActivity: recentActivity.map((log) => ({
+        id: log.id,
+        action: log.action,
+        entity: log.entity,
+        actorEmail: log.actor?.email ?? null,
+        createdAt: log.createdAt.toISOString(),
+      })),
+    }
+  })
 
 // Tous les utilisateurs de la plateforme, avec leurs entreprises, roles et sessions.
 export const listPlatformUsers = createServerFn({ method: 'GET' }).handler(async () => {
@@ -405,6 +560,104 @@ export const createUserResetLink = createServerFn({ method: 'POST' })
       delivered: Boolean(delivery?.delivered),
       email: user.email,
     }
+  })
+
+// Suspend ou reactive une entreprise. La suspension bascule tous les membres
+// actifs en 'SUSPENDED' (acces coupe, la session ne charge que les ACTIVE) ; la
+// reactivation fait l'inverse. Le motif est exige a la suspension et conserve dans
+// le journal d'audit (aucune colonne dediee sur Company, base partagee).
+export const setCompanySuspended = createServerFn({ method: 'POST' })
+  .inputValidator(
+    z.object({
+      companyId: z.string().min(1),
+      suspend: z.boolean(),
+      reason: z.string().max(500).optional(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const context = await requirePlatformAdmin()
+    const company = await prisma.company.findUnique({
+      where: { id: data.companyId },
+      select: { id: true, name: true, slug: true },
+    })
+    if (!company) return { ok: false as const, message: 'Entreprise introuvable.' }
+
+    if (data.suspend) {
+      const reason = data.reason?.trim()
+      if (!reason) return { ok: false as const, message: 'Un motif est requis pour suspendre.' }
+      const result = await prisma.companyMembership.updateMany({
+        where: { companyId: company.id, status: 'ACTIVE' },
+        data: { status: 'SUSPENDED' },
+      })
+      await prisma.auditLog.create({
+        data: {
+          companyId: company.id,
+          actorId: context.user.id,
+          action: 'company.suspended',
+          entity: 'Company',
+          entityId: company.id,
+          metadata: JSON.stringify({ reason, membersAffected: result.count }),
+        },
+      })
+      invalidateSessionCache()
+      return { ok: true as const, suspended: true, affected: result.count }
+    }
+
+    const result = await prisma.companyMembership.updateMany({
+      where: { companyId: company.id, status: 'SUSPENDED' },
+      data: { status: 'ACTIVE' },
+    })
+    await prisma.auditLog.create({
+      data: {
+        companyId: company.id,
+        actorId: context.user.id,
+        action: 'company.reactivated',
+        entity: 'Company',
+        entityId: company.id,
+        metadata: JSON.stringify({ reason: data.reason?.trim() ?? '', membersAffected: result.count }),
+      },
+    })
+    invalidateSessionCache()
+    return { ok: true as const, suspended: false, affected: result.count }
+  })
+
+// Marque le proprietaire d'une entreprise comme verifie / non verifie. La
+// verification s'appuie sur l'email verifie du compte (User.emailVerifiedAt) qui
+// conditionne deja la connexion : la devalidation revoque aussi les sessions du
+// proprietaire pour prendre effet immediatement.
+export const setOwnerVerified = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ companyId: z.string().min(1), verified: z.boolean() }))
+  .handler(async ({ data }) => {
+    const context = await requirePlatformAdmin()
+    const company = await prisma.company.findUnique({
+      where: { id: data.companyId },
+      select: {
+        id: true,
+        workspace: { select: { owner: { select: { id: true, email: true, emailVerifiedAt: true } } } },
+      },
+    })
+    const owner = company?.workspace?.owner
+    if (!company || !owner) return { ok: false as const, message: 'Proprietaire introuvable.' }
+
+    if (data.verified) {
+      await prisma.user.update({ where: { id: owner.id }, data: { emailVerifiedAt: owner.emailVerifiedAt ?? new Date() } })
+    } else {
+      await prisma.user.update({ where: { id: owner.id }, data: { emailVerifiedAt: null } })
+      await prisma.session.deleteMany({ where: { userId: owner.id } })
+      invalidateSessionCache()
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        companyId: company.id,
+        actorId: context.user.id,
+        action: data.verified ? 'company.owner_verified' : 'company.owner_unverified',
+        entity: 'User',
+        entityId: owner.id,
+        metadata: JSON.stringify({ email: owner.email }),
+      },
+    })
+    return { ok: true as const, verified: data.verified }
   })
 
 // Suppression d'une entreprise (tenant) et de toutes ses donnees (cascade Prisma).
