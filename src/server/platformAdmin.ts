@@ -331,6 +331,15 @@ export const getPlatformCompanyDetail = createServerFn({ method: 'GET' })
     }
   })
 
+// Statut de compte d'un utilisateur, DERIVE de ses memberships (meme principe que
+// deriveCompanyStatus : aucune colonne dediee, base partagee). La suspension d'un
+// utilisateur bascule ses memberships ACTIVE en 'DISABLED' — statut distinct du
+// 'SUSPENDED' pose par la suspension d'entreprise, pour que reactiver l'un ne
+// reactive jamais l'autre.
+function deriveUserDisabled(statuses: string[]): boolean {
+  return statuses.length > 0 && !statuses.includes('ACTIVE') && statuses.includes('DISABLED')
+}
+
 // Tous les utilisateurs de la plateforme, avec leurs entreprises, roles et sessions.
 export const listPlatformUsers = createServerFn({ method: 'GET' }).handler(async () => {
   await requirePlatformAdmin()
@@ -342,8 +351,8 @@ export const listPlatformUsers = createServerFn({ method: 'GET' }).handler(async
     include: {
       _count: { select: { sessions: true } },
       memberships: {
-        where: { status: 'ACTIVE' },
         select: {
+          status: true,
           company: { select: { name: true, slug: true } },
           roles: { select: { role: { select: { name: true } } } },
         },
@@ -353,25 +362,119 @@ export const listPlatformUsers = createServerFn({ method: 'GET' }).handler(async
 
   return {
     ok: true as const,
-    users: users.map((user) => ({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      isOwner: user.isOwner,
-      isSuperAdmin: adminEmails.has(user.email.trim().toLowerCase()),
-      verified: Boolean(user.emailVerifiedAt),
-      totpEnabled: Boolean(user.totpEnabledAt),
-      lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
-      createdAt: user.createdAt.toISOString(),
-      sessions: user._count.sessions,
-      companies: user.memberships.map((membership) => ({
-        name: membership.company.name,
-        slug: membership.company.slug,
-        roles: membership.roles.map((userRole) => userRole.role.name),
-      })),
-    })),
+    users: users.map((user) => {
+      const statuses = user.memberships.map((membership) => membership.status)
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        isOwner: user.isOwner,
+        isSuperAdmin: adminEmails.has(user.email.trim().toLowerCase()),
+        verified: Boolean(user.emailVerifiedAt),
+        totpEnabled: Boolean(user.totpEnabledAt),
+        mustChangePassword: user.mustChangePassword,
+        disabled: deriveUserDisabled(statuses),
+        lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
+        createdAt: user.createdAt.toISOString(),
+        sessions: user._count.sessions,
+        companies: user.memberships.map((membership) => ({
+          name: membership.company.name,
+          slug: membership.company.slug,
+          status: membership.status,
+          roles: membership.roles.map((userRole) => userRole.role.name),
+        })),
+      }
+    }),
   }
 })
+
+// Fiche complete d'un utilisateur : profil, entreprises, sessions ouvertes,
+// dernieres tentatives de connexion et dernieres actions (journal d'audit).
+export const getPlatformUserDetail = createServerFn({ method: 'GET' })
+  .inputValidator(z.object({ userId: z.string().min(1) }))
+  .handler(async ({ data }) => {
+    await requirePlatformAdmin()
+
+    const user = await prisma.user.findUnique({
+      where: { id: data.userId },
+      include: {
+        memberships: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            company: { select: { name: true, slug: true } },
+            roles: { select: { role: { select: { name: true } } } },
+          },
+        },
+        sessions: {
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, ip: true, userAgent: true, createdAt: true, expiresAt: true },
+        },
+        ownedWorkspaces: { select: { name: true, _count: { select: { companies: true } } } },
+      },
+    })
+    if (!user) return { ok: false as const, message: 'Utilisateur introuvable.' }
+
+    const [loginEvents, recentActions] = await Promise.all([
+      prisma.loginEvent.findMany({ where: { email: user.email }, orderBy: { createdAt: 'desc' }, take: 15 }),
+      prisma.auditLog.findMany({
+        where: { actorId: user.id },
+        orderBy: { createdAt: 'desc' },
+        take: 15,
+        include: { company: { select: { name: true } } },
+      }),
+    ])
+
+    const now = Date.now()
+    return {
+      ok: true as const,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        isOwner: user.isOwner,
+        isSuperAdmin: platformAdminEmails().has(user.email.trim().toLowerCase()),
+        verified: Boolean(user.emailVerifiedAt),
+        verifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
+        totpEnabled: Boolean(user.totpEnabledAt),
+        mustChangePassword: user.mustChangePassword,
+        disabled: deriveUserDisabled(user.memberships.map((membership) => membership.status)),
+        lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
+        createdAt: user.createdAt.toISOString(),
+      },
+      workspaces: user.ownedWorkspaces.map((workspace) => ({
+        name: workspace.name,
+        companies: workspace._count.companies,
+      })),
+      memberships: user.memberships.map((membership) => ({
+        id: membership.id,
+        companyName: membership.company.name,
+        companySlug: membership.company.slug,
+        status: membership.status,
+        roles: membership.roles.map((userRole) => userRole.role.name),
+      })),
+      sessions: user.sessions.map((session) => ({
+        id: session.id,
+        ip: session.ip,
+        userAgent: session.userAgent,
+        createdAt: session.createdAt.toISOString(),
+        active: session.expiresAt.getTime() > now,
+      })),
+      loginEvents: loginEvents.map((event) => ({
+        id: event.id,
+        success: event.success,
+        reason: event.reason,
+        ip: event.ip,
+        createdAt: event.createdAt.toISOString(),
+      })),
+      recentActions: recentActions.map((log) => ({
+        id: log.id,
+        action: log.action,
+        entity: log.entity,
+        companyName: log.company?.name ?? null,
+        createdAt: log.createdAt.toISOString(),
+      })),
+    }
+  })
 
 // Tous les roles a travers les entreprises + le catalogue global permissions/modules.
 export const listPlatformRoles = createServerFn({ method: 'GET' }).handler(async () => {
@@ -508,6 +611,202 @@ export const listPlatformActivity = createServerFn({ method: 'GET' }).handler(as
 })
 
 // ─── Actions de gestion (guardees + effets serveur) ───
+
+// Les actions sensibles (devalidation, suspension, suppression, 2FA) sont
+// refusees sur les comptes super admin et sur son propre compte : un super admin
+// ne peut ni se verrouiller lui-meme ni neutraliser un pair depuis l'interface.
+// La liste des super admins se gere uniquement via SUPER_ADMIN_EMAILS (access.ts).
+function guardSensitiveUser(target: { id: string; email: string }, actorId: string): string | null {
+  if (target.id === actorId) return 'Action refusee sur votre propre compte.'
+  if (platformAdminEmails().has(target.email.trim().toLowerCase())) {
+    return 'Ce compte est super admin : action refusee.'
+  }
+  return null
+}
+
+// Journalise une action de niveau utilisateur. AuditLog exige une entreprise :
+// on ecrit dans la plus ancienne entreprise de l'utilisateur, ou on n'ecrit rien
+// s'il n'appartient a aucune (compte en cours d'onboarding).
+async function logUserAction(options: {
+  userId: string
+  actorId: string
+  action: string
+  metadata?: Record<string, unknown>
+}) {
+  const membership = await prisma.companyMembership.findFirst({
+    where: { userId: options.userId },
+    orderBy: { createdAt: 'asc' },
+    select: { companyId: true },
+  })
+  if (!membership) return
+  await prisma.auditLog.create({
+    data: {
+      companyId: membership.companyId,
+      actorId: options.actorId,
+      action: options.action,
+      entity: 'User',
+      entityId: options.userId,
+      metadata: options.metadata ? JSON.stringify(options.metadata) : null,
+    },
+  })
+}
+
+// Valide ou devalide l'email d'un utilisateur. La verification conditionne deja
+// la connexion (auth.ts renvoie needsVerification) : la devalidation revoque les
+// sessions pour prendre effet immediatement, comme setOwnerVerified.
+export const setUserVerified = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ userId: z.string().min(1), verified: z.boolean() }))
+  .handler(async ({ data }) => {
+    const context = await requirePlatformAdmin()
+    const user = await prisma.user.findUnique({
+      where: { id: data.userId },
+      select: { id: true, email: true, emailVerifiedAt: true },
+    })
+    if (!user) return { ok: false as const, message: 'Utilisateur introuvable.' }
+
+    if (!data.verified) {
+      const guard = guardSensitiveUser(user, context.user.id)
+      if (guard) return { ok: false as const, message: guard }
+      await prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: null } })
+      await prisma.session.deleteMany({ where: { userId: user.id } })
+      invalidateSessionCache()
+    } else {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerifiedAt: user.emailVerifiedAt ?? new Date() },
+      })
+    }
+
+    await logUserAction({
+      userId: user.id,
+      actorId: context.user.id,
+      action: data.verified ? 'user.verified' : 'user.unverified',
+      metadata: { email: user.email },
+    })
+    return { ok: true as const, verified: data.verified }
+  })
+
+// Suspend ou reactive un utilisateur sur TOUTES ses entreprises. La suspension
+// bascule ses memberships ACTIVE en 'DISABLED' (statut distinct du 'SUSPENDED'
+// d'entreprise : reactiver une entreprise ne reactive pas un compte suspendu) et
+// revoque ses sessions. La reactivation fait l'inverse (DISABLED -> ACTIVE).
+export const setUserSuspended = createServerFn({ method: 'POST' })
+  .inputValidator(
+    z.object({
+      userId: z.string().min(1),
+      suspend: z.boolean(),
+      reason: z.string().max(500).optional(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const context = await requirePlatformAdmin()
+    const user = await prisma.user.findUnique({
+      where: { id: data.userId },
+      select: { id: true, email: true },
+    })
+    if (!user) return { ok: false as const, message: 'Utilisateur introuvable.' }
+
+    const guard = guardSensitiveUser(user, context.user.id)
+    if (guard) return { ok: false as const, message: guard }
+
+    if (data.suspend) {
+      const reason = data.reason?.trim()
+      if (!reason) return { ok: false as const, message: 'Un motif est requis pour suspendre.' }
+      const result = await prisma.companyMembership.updateMany({
+        where: { userId: user.id, status: 'ACTIVE' },
+        data: { status: 'DISABLED' },
+      })
+      await prisma.session.deleteMany({ where: { userId: user.id } })
+      invalidateSessionCache()
+      await logUserAction({
+        userId: user.id,
+        actorId: context.user.id,
+        action: 'user.suspended',
+        metadata: { email: user.email, reason, membershipsAffected: result.count },
+      })
+      return { ok: true as const, suspended: true, affected: result.count }
+    }
+
+    const result = await prisma.companyMembership.updateMany({
+      where: { userId: user.id, status: 'DISABLED' },
+      data: { status: 'ACTIVE' },
+    })
+    invalidateSessionCache()
+    await logUserAction({
+      userId: user.id,
+      actorId: context.user.id,
+      action: 'user.reactivated',
+      metadata: { email: user.email, membershipsAffected: result.count },
+    })
+    return { ok: true as const, suspended: false, affected: result.count }
+  })
+
+// Desactive la double authentification d'un utilisateur (assistance : telephone
+// perdu). Ses sessions sont revoquees : il devra se reconnecter, sans code 2FA.
+export const disableUserTotp = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ userId: z.string().min(1) }))
+  .handler(async ({ data }) => {
+    const context = await requirePlatformAdmin()
+    const user = await prisma.user.findUnique({
+      where: { id: data.userId },
+      select: { id: true, email: true, totpEnabledAt: true },
+    })
+    if (!user) return { ok: false as const, message: 'Utilisateur introuvable.' }
+    if (!user.totpEnabledAt) return { ok: false as const, message: "La 2FA n'est pas activee sur ce compte." }
+
+    const guard = guardSensitiveUser(user, context.user.id)
+    if (guard) return { ok: false as const, message: guard }
+
+    await prisma.user.update({ where: { id: user.id }, data: { totpSecret: null, totpEnabledAt: null } })
+    await prisma.session.deleteMany({ where: { userId: user.id } })
+    invalidateSessionCache()
+    await logUserAction({
+      userId: user.id,
+      actorId: context.user.id,
+      action: 'user.totp_disabled',
+      metadata: { email: user.email },
+    })
+    return { ok: true as const }
+  })
+
+// Suppression definitive d'un compte utilisateur (cascade : sessions, memberships,
+// jetons). Refusee s'il possede encore des entreprises — les supprimer d'abord via
+// la page Entreprises — et exige de retaper l'email exact, comme pour un tenant.
+export const deletePlatformUser = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ userId: z.string().min(1), confirmEmail: z.string().min(1) }))
+  .handler(async ({ data }) => {
+    const context = await requirePlatformAdmin()
+    const user = await prisma.user.findUnique({
+      where: { id: data.userId },
+      select: { id: true, email: true },
+    })
+    if (!user) return { ok: false as const, message: 'Utilisateur introuvable.' }
+
+    const guard = guardSensitiveUser(user, context.user.id)
+    if (guard) return { ok: false as const, message: guard }
+    if (data.confirmEmail.trim().toLowerCase() !== user.email.trim().toLowerCase()) {
+      return { ok: false as const, message: "L'email de confirmation ne correspond pas." }
+    }
+
+    const ownedCompanies = await prisma.company.count({ where: { workspace: { ownerId: user.id } } })
+    if (ownedCompanies > 0) {
+      return {
+        ok: false as const,
+        message: `Ce compte possede ${ownedCompanies} entreprise(s). Supprimez-les d'abord depuis la page Entreprises.`,
+      }
+    }
+
+    // Trace ecrite AVANT la suppression : le membership disparait avec le compte.
+    await logUserAction({
+      userId: user.id,
+      actorId: context.user.id,
+      action: 'user.deleted',
+      metadata: { email: user.email },
+    })
+    await prisma.user.delete({ where: { id: user.id } })
+    invalidateSessionCache()
+    return { ok: true as const, deleted: user.email }
+  })
 
 // Force la deconnexion d'un utilisateur en supprimant toutes ses sessions.
 export const revokeUserSessions = createServerFn({ method: 'POST' })

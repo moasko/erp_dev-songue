@@ -96,6 +96,72 @@ export function AdminEmpty({ children }: { children: React.ReactNode }) {
   return <div className="px-4 py-10 text-center text-sm text-slate-500">{children}</div>
 }
 
+// Bouton d'action compact (icone seule) pour les lignes de tableau.
+export function IconButton({
+  children,
+  title,
+  onClick,
+  disabled,
+  tone = 'muted',
+}: {
+  children: React.ReactNode
+  title: string
+  onClick: () => void
+  disabled?: boolean
+  tone?: 'muted' | 'good' | 'warn' | 'risk'
+}) {
+  const tones: Record<string, string> = {
+    muted: 'border-slate-200 text-slate-600 hover:bg-slate-50',
+    good: 'border-emerald-200 text-emerald-700 hover:bg-emerald-50',
+    warn: 'border-amber-200 text-amber-700 hover:bg-amber-50',
+    risk: 'border-red-200 text-red-700 hover:bg-red-50',
+  }
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex size-8 items-center justify-center rounded border bg-white transition-colors disabled:opacity-40 ${tones[tone]}`}
+    >
+      {children}
+    </button>
+  )
+}
+
+export function ModalShell({ children, onClose, wide = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm" onClick={onClose} />
+      <div className={`relative max-h-[90vh] w-full overflow-y-auto rounded border border-slate-200 bg-white p-5 ${wide ? 'max-w-2xl' : 'max-w-md'}`}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+// Export CSV cote client : separateur ';' (convention fr), echappement des
+// guillemets et BOM UTF-8 pour qu'Excel detecte l'encodage.
+export function downloadCsv(
+  filename: string,
+  header: string[],
+  rows: Array<Array<string | number | null | undefined>>,
+) {
+  const escape = (value: string | number | null | undefined) => {
+    const text = value === null || value === undefined ? '' : String(value)
+    return /[";\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+  }
+  const csv = [header, ...rows].map((row) => row.map(escape).join(';')).join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 export function formatDateTime(iso: string | null): string {
   if (!iso) return '—'
   const date = new Date(iso)

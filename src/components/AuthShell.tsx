@@ -46,9 +46,9 @@ export function AuthSplitShell({
   subhead: string
 }) {
   return (
-    <main className="auth-light min-h-screen bg-white p-3 sm:p-5">
-      <div className="mx-auto grid min-h-[calc(100vh-1.5rem)] max-w-7xl gap-5 sm:min-h-[calc(100vh-2.5rem)] lg:grid-cols-2">
-        <aside className="relative hidden overflow-hidden rounded-3xl bg-[#00fe68] p-10 lg:flex lg:flex-col lg:justify-center xl:p-14">
+    <main className="auth-light min-h-screen bg-white">
+      <div className="grid min-h-screen lg:grid-cols-2">
+        <aside className="relative hidden overflow-hidden bg-[#00fe68] p-10 lg:flex lg:flex-col lg:justify-center xl:p-14">
           <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 size-72 rounded-full bg-white/25 blur-2xl" />
           <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-10 size-80 rounded-full bg-black/5 blur-3xl" />
           <div className="relative">

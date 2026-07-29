@@ -3,6 +3,7 @@ import {
   Ban,
   Building2,
   CircleCheck,
+  Download,
   Eye,
   ShieldCheck,
   ShieldOff,
@@ -17,7 +18,18 @@ import {
   setCompanySuspended,
   setOwnerVerified,
 } from '~/server/platformAdmin'
-import { AdminBadge, AdminCard, AdminEmpty, AdminPageHeader, AdminTable, formatDate, formatDateTime } from '~/components/AdminUI'
+import {
+  AdminBadge,
+  AdminCard,
+  AdminEmpty,
+  AdminPageHeader,
+  AdminTable,
+  IconButton,
+  ModalShell,
+  downloadCsv,
+  formatDate,
+  formatDateTime,
+} from '~/components/AdminUI'
 
 export const Route = createFileRoute('/admin/companies')({
   loader: async () => listPlatformCompanies(),
@@ -26,6 +38,7 @@ export const Route = createFileRoute('/admin/companies')({
 
 type CompanyRow = Awaited<ReturnType<typeof listPlatformCompanies>>['companies'][number]
 type StatusFilter = 'all' | 'active' | 'suspended' | 'unverified'
+type SortKey = 'recent' | 'name' | 'members' | 'invoices'
 
 const statusFilters: Array<{ key: StatusFilter; label: string }> = [
   { key: 'all', label: 'Toutes' },
@@ -33,6 +46,22 @@ const statusFilters: Array<{ key: StatusFilter; label: string }> = [
   { key: 'suspended', label: 'Suspendues' },
   { key: 'unverified', label: 'Proprietaire non verifie' },
 ]
+
+const sortOptions: Array<{ key: SortKey; label: string }> = [
+  { key: 'recent', label: 'Plus recentes' },
+  { key: 'name', label: 'Nom (A-Z)' },
+  { key: 'members', label: 'Membres' },
+  { key: 'invoices', label: 'Factures' },
+]
+
+function sortCompanies(companies: CompanyRow[], sort: SortKey): CompanyRow[] {
+  const sorted = [...companies]
+  if (sort === 'name') sorted.sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+  else if (sort === 'members') sorted.sort((a, b) => b.members - a.members)
+  else if (sort === 'invoices') sorted.sort((a, b) => b.invoices - a.invoices)
+  // 'recent' : ordre du serveur (createdAt desc), rien a faire.
+  return sorted
+}
 
 function CompaniesPage() {
   const data = Route.useLoaderData()
@@ -44,17 +73,21 @@ function CompaniesPage() {
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [search, setSearch] = React.useState('')
   const [filter, setFilter] = React.useState<StatusFilter>('all')
+  const [sort, setSort] = React.useState<SortKey>('recent')
 
   if (!data.ok) return <AdminEmpty>Donnees indisponibles.</AdminEmpty>
 
-  const companies = data.companies.filter((company) => {
-    const query = search.trim().toLowerCase()
-    if (query && !`${company.name} ${company.slug} ${company.ownerEmail ?? ''}`.toLowerCase().includes(query)) return false
-    if (filter === 'active') return company.status === 'ACTIVE'
-    if (filter === 'suspended') return company.status === 'SUSPENDED'
-    if (filter === 'unverified') return !company.ownerVerified
-    return true
-  })
+  const companies = sortCompanies(
+    data.companies.filter((company) => {
+      const query = search.trim().toLowerCase()
+      if (query && !`${company.name} ${company.slug} ${company.ownerEmail ?? ''}`.toLowerCase().includes(query)) return false
+      if (filter === 'active') return company.status === 'ACTIVE'
+      if (filter === 'suspended') return company.status === 'SUSPENDED'
+      if (filter === 'unverified') return !company.ownerVerified
+      return true
+    }),
+    sort,
+  )
 
   const counts = {
     total: data.companies.length,
@@ -86,12 +119,43 @@ function CompaniesPage() {
     if (result.ok) await refresh()
   }
 
+  function handleExport() {
+    downloadCsv(
+      'entreprises.csv',
+      ['Nom', 'Slug', 'Statut', 'Proprietaire', 'Email proprietaire', 'Verifie', 'Membres actifs', 'Membres', 'Factures', 'Clients', 'Devise', 'Creee le'],
+      companies.map((company) => [
+        company.name,
+        company.slug,
+        company.status === 'SUSPENDED' ? 'Suspendue' : company.status === 'EMPTY' ? 'Vide' : 'Active',
+        company.ownerName,
+        company.ownerEmail,
+        company.ownerVerified ? 'Oui' : 'Non',
+        company.activeMembers,
+        company.members,
+        company.invoices,
+        company.customers,
+        company.currency,
+        formatDate(company.createdAt),
+      ]),
+    )
+  }
+
   return (
     <div>
       <AdminPageHeader
         title="Entreprises"
         description={`${counts.total} tenant(s) · ${counts.suspended} suspendue(s) · ${counts.unverified} proprietaire(s) non verifie(s).`}
         icon={Building2}
+        actions={
+          <button
+            type="button"
+            onClick={handleExport}
+            className="inline-flex items-center gap-1.5 rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            <Download className="size-3.5" />
+            Export CSV
+          </button>
+        }
       />
 
       {message ? (
@@ -117,13 +181,27 @@ function CompaniesPage() {
             </button>
           ))}
         </div>
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Rechercher (nom, slug, email)…"
-          className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950 sm:max-w-xs"
-        />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <select
+            value={sort}
+            onChange={(event) => setSort(event.target.value as SortKey)}
+            aria-label="Trier les entreprises"
+            className="rounded border border-slate-300 bg-white px-2.5 py-2 text-xs font-semibold text-slate-600 outline-none focus:border-slate-950"
+          >
+            {sortOptions.map((option) => (
+              <option key={option.key} value={option.key}>
+                Tri : {option.label}
+              </option>
+            ))}
+          </select>
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Rechercher (nom, slug, email)…"
+            className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950 sm:max-w-xs"
+          />
+        </div>
       </div>
 
       <AdminCard>
@@ -240,50 +318,6 @@ function CompaniesPage() {
           }}
         />
       ) : null}
-    </div>
-  )
-}
-
-function IconButton({
-  children,
-  title,
-  onClick,
-  disabled,
-  tone = 'muted',
-}: {
-  children: React.ReactNode
-  title: string
-  onClick: () => void
-  disabled?: boolean
-  tone?: 'muted' | 'good' | 'warn' | 'risk'
-}) {
-  const tones: Record<string, string> = {
-    muted: 'border-slate-200 text-slate-600 hover:bg-slate-50',
-    good: 'border-emerald-200 text-emerald-700 hover:bg-emerald-50',
-    warn: 'border-amber-200 text-amber-700 hover:bg-amber-50',
-    risk: 'border-red-200 text-red-700 hover:bg-red-50',
-  }
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      disabled={disabled}
-      onClick={onClick}
-      className={`inline-flex size-8 items-center justify-center rounded border bg-white transition-colors disabled:opacity-40 ${tones[tone]}`}
-    >
-      {children}
-    </button>
-  )
-}
-
-function ModalShell({ children, onClose, wide = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative max-h-[90vh] w-full overflow-y-auto rounded border border-slate-200 bg-white p-5 ${wide ? 'max-w-2xl' : 'max-w-md'}`}>
-        {children}
-      </div>
     </div>
   )
 }
