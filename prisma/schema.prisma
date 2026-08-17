@@ -26,6 +26,8 @@ model User {
   auditLogs          AuditLog[]               @relation("AuditActor")
   passwordResets     PasswordResetToken[]
   emailVerifications EmailVerificationToken[]
+  posSessions        PosSession[]
+  posTickets         PosTicket[]
 }
 
 // Code a 6 chiffres envoye par email a l'inscription (etape 1 -> etape 2).
@@ -141,6 +143,9 @@ model Company {
   quoteSettings    QuoteSettings?
   quotes           Quote[]
   vendors          Vendor[]
+  posRegisters     PosRegister[]
+  posSessions      PosSession[]
+  posTickets       PosTicket[]
 
   @@index([workspaceId])
 }
@@ -294,6 +299,7 @@ model Customer {
   deals         Deal[]
   quotes        Quote[]
   salesInvoices SalesInvoice[]
+  posTickets    PosTicket[]
 
   @@index([companyId])
 }
@@ -353,6 +359,7 @@ model CatalogItem {
   company        Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   category       Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   quoteLines     QuoteLine[]
+  posTicketLines PosTicketLine[]
 
   @@unique([companyId, sku])
   @@index([companyId, type])
@@ -466,6 +473,7 @@ model Transaction {
   company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   account     BankAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   payments    Payment[]
+  posTicket   PosTicket?
 
   @@index([companyId, date])
   @@index([accountId])
@@ -706,4 +714,84 @@ model PlaceSearchCache {
 
   @@index([query])
   @@index([expiresAt])
+}
+
+model PosRegister {
+  id        String       @id @default(cuid())
+  companyId String
+  name      String
+  status    String       @default("Active")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  company   Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sessions  PosSession[]
+
+  @@unique([companyId, name])
+  @@index([companyId, status])
+}
+
+model PosSession {
+  id             String       @id @default(cuid())
+  companyId      String
+  registerId     String
+  cashierId      String
+  status         String       @default("Open")
+  openingBalance Int          @default(0)
+  closingBalance Int?
+  expectedBalance Int?
+  openedAt       DateTime     @default(now())
+  closedAt       DateTime?
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  register       PosRegister  @relation(fields: [registerId], references: [id], onDelete: Restrict)
+  cashier        User         @relation(fields: [cashierId], references: [id], onDelete: Restrict)
+  tickets        PosTicket[]
+
+  @@index([companyId, status])
+  @@index([registerId, openedAt])
+  @@index([cashierId])
+}
+
+model PosTicket {
+  id            String          @id @default(cuid())
+  companyId     String
+  sessionId     String
+  cashierId     String
+  customerId    String?
+  transactionId String?         @unique
+  reference     String
+  status        String          @default("Completed")
+  paymentMethod String
+  subtotalCents Int
+  discountCents Int             @default(0)
+  taxCents      Int             @default(0)
+  totalCents    Int
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  company       Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  session       PosSession      @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  cashier       User            @relation(fields: [cashierId], references: [id], onDelete: Restrict)
+  customer      Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  transaction   Transaction?    @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  lines         PosTicketLine[]
+
+  @@unique([companyId, reference])
+  @@index([companyId, createdAt])
+  @@index([sessionId])
+  @@index([customerId])
+}
+
+model PosTicketLine {
+  id          String      @id @default(cuid())
+  ticketId    String
+  itemId      String?
+  sku         String
+  name        String
+  quantity    Int
+  unitPrice   Int
+  totalCents  Int
+  ticket      PosTicket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  item        CatalogItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId])
+  @@index([itemId])
 }

@@ -200,6 +200,64 @@ export const updateCatalogItemStatus = createServerFn({ method: 'POST' })
     return item
   })
 
+export const updateCatalogItem = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string(), itemId: z.string(), name: z.string().min(1), sku: z.string().min(1),
+    type: z.enum(['Product', 'Service']), description: z.string().optional(), supplier: z.string().optional(),
+    categoryId: z.string().optional(), price: z.number().min(0), wholesalePrice: z.number().min(0),
+    cost: z.number().min(0), stock: z.number().min(0).optional(), minStockLevel: z.number().min(0).optional(),
+    imageUrl: z.string().optional(), status: z.enum(['Active', 'Draft', 'Archived']),
+  }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'inventory.manage')
+    const existing = await prisma.catalogItem.findFirst({ where: { id: data.itemId, companyId: company.id } })
+    if (!existing) throw new Error('Article introuvable.')
+    if (data.categoryId) {
+      const category = await prisma.category.findFirst({ where: { id: data.categoryId, companyId: company.id, type: data.type } })
+      if (!category) throw new Error('Categorie invalide pour ce type.')
+    }
+    const nextStock = data.type === 'Product' ? Math.round(data.stock ?? 0) : null
+    const stockDelta = (nextStock ?? 0) - (existing.stock ?? 0)
+    const warehouse = stockDelta !== 0 ? await ensureWarehouse(company.id) : null
+    return prisma.$transaction(async (tx) => {
+      const item = await tx.catalogItem.update({
+        where: { id: existing.id },
+        data: {
+          name: data.name.trim(), sku: data.sku.trim(), type: data.type,
+          description: data.description?.trim() || null, supplier: data.type === 'Product' ? data.supplier?.trim() || null : null,
+          categoryId: data.categoryId || null, price: Math.round(data.price), wholesalePrice: data.type === 'Product' ? Math.round(data.wholesalePrice) : 0,
+          cost: Math.round(data.cost), stock: nextStock, minStockLevel: data.type === 'Product' ? Math.round(data.minStockLevel ?? 0) : null,
+          imageUrl: data.imageUrl?.trim() || null, status: data.status,
+        },
+        include: { category: true },
+      })
+      if (warehouse && stockDelta !== 0) {
+        await tx.stockMovement.create({
+          data: {
+            companyId: company.id, warehouseId: warehouse.id, itemId: item.id,
+            type: 'Adjustment', quantity: Math.abs(stockDelta), reference: `ADJ-${Date.now().toString().slice(-6)}`,
+            reason: stockDelta > 0 ? 'Correction positive depuis la fiche article' : 'Correction negative depuis la fiche article', status: 'Completed',
+          },
+        })
+      }
+      await tx.auditLog.create({ data: { companyId: company.id, actorId: user.id, action: 'catalog.updated', entity: 'CatalogItem', entityId: item.id, metadata: JSON.stringify({ sku: item.sku, previousStock: existing.stock, stock: nextStock }) } })
+      return item
+    })
+  })
+
+export const deleteCatalogItem = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ companySlug: z.string(), itemId: z.string() }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'inventory.manage')
+    const item = await prisma.catalogItem.findFirst({ where: { id: data.itemId, companyId: company.id } })
+    if (!item) throw new Error('Article introuvable.')
+    await prisma.$transaction(async (tx) => {
+      await tx.auditLog.create({ data: { companyId: company.id, actorId: user.id, action: 'catalog.deleted', entity: 'CatalogItem', entityId: item.id, metadata: JSON.stringify({ name: item.name, sku: item.sku }) } })
+      await tx.catalogItem.delete({ where: { id: item.id } })
+    })
+    return { ok: true }
+  })
+
 export const restockCatalogItem = createServerFn({ method: 'POST' })
   .inputValidator(z.object({
     companySlug: z.string(),
@@ -413,6 +471,116 @@ export const createCrmLead = createServerFn({ method: 'POST' })
     })
   })
 
+export const updateQuote = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string(), quoteId: z.string(), customerId: z.string().optional(), title: z.string().min(1),
+    validUntil: z.string().min(1), discountRate: z.number().min(0).max(100), taxRate: z.number().min(0).max(100),
+    notes: z.string().optional(), terms: z.string().optional(), lines: z.array(quoteLineInput).min(1),
+  }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'invoice.update')
+    const existing = await prisma.quote.findFirst({ where: { id: data.quoteId, companyId: company.id } })
+    if (!existing) throw new Error('Devis introuvable.')
+    if (existing.status === 'Accepted') throw new Error('Un devis accepte doit etre duplique ou annule, pas modifie.')
+    if (data.customerId) {
+      const customer = await prisma.customer.findFirst({ where: { id: data.customerId, companyId: company.id } })
+      if (!customer) throw new Error('Client introuvable.')
+    }
+    const subtotal = data.lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPrice), 0)
+    const taxable = Math.max(0, subtotal - Math.round(subtotal * data.discountRate / 100))
+    const total = taxable + Math.round(taxable * data.taxRate / 100)
+    return prisma.$transaction(async (tx) => {
+      await tx.quoteLine.deleteMany({ where: { quoteId: existing.id } })
+      const quote = await tx.quote.update({ where: { id: existing.id }, data: {
+        customerId: data.customerId || null, title: data.title.trim(), validUntil: new Date(data.validUntil),
+        discountRate: Math.round(data.discountRate), taxRate: Math.round(data.taxRate), subtotalCents: subtotal, totalCents: total,
+        notes: data.notes?.trim() || null, terms: data.terms?.trim() || null,
+        lines: { create: data.lines.map((line, index) => ({ itemId: line.itemId || null, description: line.description.trim(), quantity: line.quantity, unitPrice: Math.round(line.unitPrice), totalCents: Math.round(line.quantity * line.unitPrice), sortOrder: index })) },
+      }, include: { customer: true, lines: { include: { item: true }, orderBy: { sortOrder: 'asc' } } } })
+      await tx.auditLog.create({ data: { companyId: company.id, actorId: user.id, action: 'quote.updated', entity: 'Quote', entityId: quote.id, metadata: JSON.stringify({ reference: quote.reference, total: quote.totalCents }) } })
+      return quote
+    })
+  })
+
+export const deleteQuote = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ companySlug: z.string(), quoteId: z.string() }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'invoice.delete')
+    const quote = await prisma.quote.findFirst({ where: { id: data.quoteId, companyId: company.id } })
+    if (!quote) throw new Error('Devis introuvable.')
+    if (quote.status === 'Accepted') throw new Error('Un devis accepte ne peut pas etre supprime.')
+    await prisma.$transaction(async (tx) => {
+      await tx.auditLog.create({ data: { companyId: company.id, actorId: user.id, action: 'quote.deleted', entity: 'Quote', entityId: quote.id, metadata: JSON.stringify({ reference: quote.reference }) } })
+      await tx.quote.delete({ where: { id: quote.id } })
+    })
+    return { ok: true }
+  })
+
+export const updateCrmLead = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string(), leadId: z.string(), name: z.string().min(1), company: z.string().optional(),
+    email: z.string().optional(), phone: z.string().optional(), source: z.string(),
+    status: z.enum(['New', 'Contacted', 'Qualified', 'Lost']),
+  }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'customer.update')
+    const lead = await prisma.lead.update({
+      where: { id: data.leadId, companyId: company.id },
+      data: { name: data.name.trim(), company: data.company?.trim() || null, email: data.email?.trim() || null, phone: data.phone?.trim() || null, source: data.source, status: data.status },
+    })
+    await prisma.auditLog.create({ data: { companyId: company.id, actorId: user.id, action: 'lead.updated', entity: 'Lead', entityId: lead.id, metadata: JSON.stringify({ name: lead.name, status: lead.status }) } })
+    return lead
+  })
+
+export const deleteCrmLead = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ companySlug: z.string(), leadId: z.string() }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'customer.delete')
+    const lead = await prisma.lead.findFirst({ where: { id: data.leadId, companyId: company.id } })
+    if (!lead) throw new Error('Prospect introuvable.')
+    await prisma.$transaction(async (tx) => {
+      await tx.auditLog.create({ data: { companyId: company.id, actorId: user.id, action: 'lead.deleted', entity: 'Lead', entityId: lead.id, metadata: JSON.stringify({ name: lead.name }) } })
+      await tx.lead.delete({ where: { id: lead.id } })
+    })
+    return { ok: true }
+  })
+
+const dealInput = z.object({
+  companySlug: z.string(), contactId: z.string(), title: z.string().min(1), value: z.number().min(0),
+  stageId: z.enum(['new', 'qualified', 'proposal', 'negotiation', 'won', 'lost']),
+  priority: z.enum(['Low', 'Medium', 'High']), expectedCloseDate: z.string().min(1),
+})
+
+export const createCrmDeal = createServerFn({ method: 'POST' })
+  .inputValidator(dealInput)
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'customer.create')
+    const customer = await prisma.customer.findFirst({ where: { id: data.contactId, companyId: company.id } })
+    if (!customer) throw new Error('Client introuvable.')
+    const deal = await prisma.deal.create({ data: { companyId: company.id, contactId: customer.id, title: data.title.trim(), value: Math.round(data.value), stageId: data.stageId, priority: data.priority, expectedCloseDate: new Date(data.expectedCloseDate), status: data.stageId === 'won' ? 'Won' : data.stageId === 'lost' ? 'Lost' : 'Open' }, include: { customer: true } })
+    await prisma.auditLog.create({ data: { companyId: company.id, actorId: user.id, action: 'deal.created', entity: 'Deal', entityId: deal.id } })
+    return deal
+  })
+
+export const updateCrmDeal = createServerFn({ method: 'POST' })
+  .inputValidator(dealInput.extend({ dealId: z.string() }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'customer.update')
+    const deal = await prisma.deal.update({ where: { id: data.dealId, companyId: company.id }, data: { contactId: data.contactId, title: data.title.trim(), value: Math.round(data.value), stageId: data.stageId, priority: data.priority, expectedCloseDate: new Date(data.expectedCloseDate), status: data.stageId === 'won' ? 'Won' : data.stageId === 'lost' ? 'Lost' : 'Open' }, include: { customer: true } })
+    await prisma.auditLog.create({ data: { companyId: company.id, actorId: user.id, action: 'deal.updated', entity: 'Deal', entityId: deal.id, metadata: JSON.stringify({ stage: deal.stageId, value: deal.value }) } })
+    return deal
+  })
+
+export const deleteCrmDeal = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ companySlug: z.string(), dealId: z.string() }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'customer.delete')
+    const deal = await prisma.deal.findFirst({ where: { id: data.dealId, companyId: company.id } })
+    if (!deal) throw new Error('Opportunite introuvable.')
+    await prisma.$transaction(async (tx) => { await tx.auditLog.create({ data: { companyId: company.id, actorId: user.id, action: 'deal.deleted', entity: 'Deal', entityId: deal.id, metadata: JSON.stringify({ title: deal.title }) } }); await tx.deal.delete({ where: { id: deal.id } }) })
+    return { ok: true }
+  })
+
 export const createFinanceTransaction = createServerFn({ method: 'POST' })
   .inputValidator(z.object({
     companySlug: z.string(),
@@ -621,7 +789,13 @@ export const createPosSale = createServerFn({ method: 'POST' })
     })).min(1),
   }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug, 'finance.manage')
+    const { company, user } = await getCompanyContext(data.companySlug, 'finance.manage')
+    const register = await prisma.posRegister.upsert({
+      where: { companyId_name: { companyId: company.id, name: 'Caisse principale' } },
+      update: {}, create: { companyId: company.id, name: 'Caisse principale' },
+    })
+    const session = (await prisma.posSession.findFirst({ where: { companyId: company.id, registerId: register.id, cashierId: user.id, status: 'Open' }, orderBy: { openedAt: 'desc' } }))
+      ?? await prisma.posSession.create({ data: { companyId: company.id, registerId: register.id, cashierId: user.id, status: 'Open' } })
     const requestedQuantities = new Map<string, number>()
     for (const line of data.lines) {
       requestedQuantities.set(line.itemId, (requestedQuantities.get(line.itemId) ?? 0) + line.quantity)
@@ -652,7 +826,7 @@ export const createPosSale = createServerFn({ method: 'POST' })
         : await ensureAccount(company.id, 'Cash', 'Caisse boutique')
     const warehouse = lineItems.some((line) => line.item.stock !== null) ? await ensureWarehouse(company.id) : null
 
-    const transaction = await prisma.$transaction(async (tx) => {
+    const sale = await prisma.$transaction(async (tx) => {
       for (const line of lineItems) {
         if (line.item.stock !== null) {
           // Decrement conditionnel : deux ventes simultanees du meme article ne
@@ -685,7 +859,7 @@ export const createPosSale = createServerFn({ method: 'POST' })
         data: { balance: { increment: total } },
       })
 
-      return tx.transaction.create({
+      const transaction = await tx.transaction.create({
         data: {
           companyId: company.id,
           accountId: account.id,
@@ -697,6 +871,17 @@ export const createPosSale = createServerFn({ method: 'POST' })
           status: 'Completed',
         },
       })
+      const ticket = await tx.posTicket.create({
+        data: {
+          companyId: company.id, sessionId: session.id, cashierId: user.id, customerId: data.customerId || null,
+          transactionId: transaction.id, reference, status: 'Completed', paymentMethod: data.paymentMethod,
+          subtotalCents: total, totalCents: total,
+          lines: { create: lineItems.map((line) => ({ itemId: line.item.id, sku: line.item.sku, name: line.item.name, quantity: line.quantity, unitPrice: line.item.price, totalCents: line.total })) },
+        },
+        include: { lines: true, customer: true },
+      })
+      await tx.auditLog.create({ data: { companyId: company.id, actorId: user.id, action: 'pos.sale_completed', entity: 'PosTicket', entityId: ticket.id, metadata: JSON.stringify({ reference, total, paymentMethod: data.paymentMethod }) } })
+      return { transaction, ticket }
     })
 
     const customer = data.customerId ? await prisma.customer.findFirst({ where: { id: data.customerId, companyId: company.id } }) : null
@@ -706,8 +891,82 @@ export const createPosSale = createServerFn({ method: 'POST' })
       total,
       items: data.lines.reduce((sum, line) => sum + line.quantity, 0),
       paymentMethod: data.paymentMethod,
-      createdAt: transaction.date.toISOString(),
+      createdAt: sale.ticket.createdAt.toISOString(),
+      lines: sale.ticket.lines.map((line) => ({ name: line.name, sku: line.sku, quantity: line.quantity, unitPrice: line.unitPrice, total: line.totalCents })),
     }
+  })
+
+export const openPosSession = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ companySlug: z.string(), openingBalance: z.number().min(0).default(0) }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'finance.manage')
+    const register = await prisma.posRegister.upsert({ where: { companyId_name: { companyId: company.id, name: 'Caisse principale' } }, update: {}, create: { companyId: company.id, name: 'Caisse principale' } })
+    const existing = await prisma.posSession.findFirst({ where: { registerId: register.id, cashierId: user.id, status: 'Open' } })
+    if (existing) return existing
+    return prisma.posSession.create({ data: { companyId: company.id, registerId: register.id, cashierId: user.id, openingBalance: Math.round(data.openingBalance) } })
+  })
+
+export const closePosSession = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ companySlug: z.string(), closingBalance: z.number().min(0) }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'finance.manage')
+    const session = await prisma.posSession.findFirst({ where: { companyId: company.id, cashierId: user.id, status: 'Open' }, orderBy: { openedAt: 'desc' } })
+    if (!session) throw new Error('Aucune session de caisse ouverte.')
+    const cash = await prisma.posTicket.aggregate({ where: { sessionId: session.id, status: 'Completed', paymentMethod: 'cash' }, _sum: { totalCents: true } })
+    const expectedBalance = session.openingBalance + (cash._sum.totalCents ?? 0)
+    return prisma.posSession.update({ where: { id: session.id }, data: { status: 'Closed', closingBalance: Math.round(data.closingBalance), expectedBalance, closedAt: new Date() } })
+  })
+
+export const updatePosTicket = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string(), ticketId: z.string(), customerId: z.string().optional(),
+    paymentMethod: z.enum(['cash', 'mobile', 'card']),
+    lines: z.array(z.object({ lineId: z.string(), quantity: z.number().int().positive() })).min(1),
+  }))
+  .handler(async ({ data }) => {
+    const { company, user } = await getCompanyContext(data.companySlug, 'finance.manage')
+    const ticket = await prisma.posTicket.findFirst({
+      where: { id: data.ticketId, companyId: company.id, status: 'Completed' },
+      include: { lines: { include: { item: true } }, transaction: true },
+    })
+    if (!ticket?.transaction) throw new Error('Ticket modifiable introuvable.')
+    const quantities = new Map(data.lines.map((line) => [line.lineId, line.quantity]))
+    if (quantities.size !== data.lines.length || quantities.size !== ticket.lines.length || data.lines.some((line) => !ticket.lines.some((existing) => existing.id === line.lineId))) throw new Error('Toutes les lignes du ticket doivent etre conservees.')
+    if (data.customerId && !await prisma.customer.findFirst({ where: { id: data.customerId, companyId: company.id } })) throw new Error('Client introuvable.')
+
+    const updatedLines = ticket.lines.filter((line) => quantities.has(line.id)).map((line) => ({ ...line, nextQuantity: quantities.get(line.id)! }))
+    const newTotal = updatedLines.reduce((sum, line) => sum + line.unitPrice * line.nextQuantity, 0)
+    const newAccount = data.paymentMethod === 'mobile'
+      ? await ensureAccount(company.id, 'Cash', 'Mobile money')
+      : data.paymentMethod === 'card'
+        ? await ensureAccount(company.id, 'CreditCard', 'Paiement carte')
+        : await ensureAccount(company.id, 'Cash', 'Caisse boutique')
+    const oldAccountId = ticket.transaction.accountId
+    const warehouse = updatedLines.some((line) => line.item?.stock !== null && line.nextQuantity !== line.quantity) ? await ensureWarehouse(company.id) : null
+
+    return prisma.$transaction(async (tx) => {
+      for (const line of updatedLines) {
+        if (!line.item || line.item.stock === null || line.nextQuantity === line.quantity) continue
+        const additionalSold = line.nextQuantity - line.quantity
+        if (additionalSold > 0) {
+          const changed = await tx.catalogItem.updateMany({ where: { id: line.item.id, companyId: company.id, stock: { gte: additionalSold } }, data: { stock: { decrement: additionalSold } } })
+          if (!changed.count) throw new Error(`Stock insuffisant pour ${line.name}.`)
+        } else await tx.catalogItem.update({ where: { id: line.item.id }, data: { stock: { increment: Math.abs(additionalSold) } } })
+        await tx.stockMovement.create({ data: { companyId: company.id, warehouseId: warehouse!.id, itemId: line.item.id, type: 'Adjustment', quantity: Math.abs(additionalSold), reference: ticket.reference, reason: 'Correction ticket de caisse', status: 'Completed' } })
+      }
+      if (oldAccountId === newAccount.id) {
+        await tx.bankAccount.update({ where: { id: oldAccountId }, data: { balance: { increment: newTotal - ticket.totalCents } } })
+      } else {
+        await tx.bankAccount.update({ where: { id: oldAccountId }, data: { balance: { decrement: ticket.totalCents } } })
+        await tx.bankAccount.update({ where: { id: newAccount.id }, data: { balance: { increment: newTotal } } })
+      }
+      await tx.posTicketLine.deleteMany({ where: { ticketId: ticket.id, id: { notIn: data.lines.map((line) => line.lineId) } } })
+      for (const line of updatedLines) await tx.posTicketLine.update({ where: { id: line.id }, data: { quantity: line.nextQuantity, totalCents: line.unitPrice * line.nextQuantity } })
+      await tx.transaction.update({ where: { id: ticket.transaction!.id }, data: { accountId: newAccount.id, amount: newTotal } })
+      const result = await tx.posTicket.update({ where: { id: ticket.id }, data: { customerId: data.customerId || null, paymentMethod: data.paymentMethod, subtotalCents: newTotal, totalCents: newTotal }, include: { lines: true, customer: true, cashier: { select: { id: true, name: true } }, transaction: { include: { account: true } } } })
+      await tx.auditLog.create({ data: { companyId: company.id, actorId: user.id, action: 'pos.ticket_corrected', entity: 'PosTicket', entityId: ticket.id, metadata: JSON.stringify({ previousTotal: ticket.totalCents, total: newTotal, paymentMethod: data.paymentMethod }) } })
+      return result
+    })
   })
 
 export const createVendor = createServerFn({ method: 'POST' })

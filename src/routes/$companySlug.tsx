@@ -14,6 +14,7 @@ import {
   FileCheck2,
   FileText,
   History,
+  Handshake,
   Landmark,
   LayoutDashboard,
   LogOut,
@@ -95,6 +96,7 @@ type SidebarChild = {
 type SidebarSection = {
   label: string
   icon: any
+  moduleKey: string
   children: SidebarChild[]
 }
 
@@ -105,6 +107,7 @@ const erpNavigation: Array<{ label: string; sections: SidebarSection[] }> = [
       {
         label: 'Caisse',
         icon: ShoppingCart,
+        moduleKey: 'sales',
         children: [
           { path: '/pos', label: 'Resume caisse', icon: BarChart3, exact: true },
           { path: '/pos/register', label: 'Nouvelle vente', icon: ShoppingCart },
@@ -115,6 +118,7 @@ const erpNavigation: Array<{ label: string; sections: SidebarSection[] }> = [
       {
         label: 'Documents vente',
         icon: ReceiptText,
+        moduleKey: 'sales',
         children: [
           { path: '/sales', label: 'Resume ventes', icon: LayoutDashboard, exact: true },
           { path: '/quotes', label: 'Devis', icon: FileCheck2, exact: true },
@@ -124,9 +128,11 @@ const erpNavigation: Array<{ label: string; sections: SidebarSection[] }> = [
       {
         label: 'Clients',
         icon: Contact,
+        moduleKey: 'crm',
         children: [
           { path: '/crm', label: 'Resume clients', icon: LayoutDashboard, exact: true },
           { path: '/crm/leads', label: 'Ajouter client', icon: Plus },
+          { path: '/crm/deals', label: 'Opportunites', icon: Handshake },
         ],
       },
     ],
@@ -137,6 +143,7 @@ const erpNavigation: Array<{ label: string; sections: SidebarSection[] }> = [
       {
         label: 'Produits',
         icon: Package,
+        moduleKey: 'inventory',
         children: [
           { path: '/products-services', label: 'Produits & services', icon: Package, exact: true },
         ],
@@ -144,6 +151,7 @@ const erpNavigation: Array<{ label: string; sections: SidebarSection[] }> = [
       {
         label: 'Stock',
         icon: Boxes,
+        moduleKey: 'inventory',
         children: [
           { path: '/inventory', label: 'Resume stock', icon: LayoutDashboard, exact: true },
           { path: '/inventory/transfers', label: 'Mouvements', icon: ArrowRightLeft },
@@ -152,6 +160,7 @@ const erpNavigation: Array<{ label: string; sections: SidebarSection[] }> = [
       {
         label: 'Achats',
         icon: Truck,
+        moduleKey: 'inventory',
         children: [
           { path: '/purchases', label: 'Resume achats', icon: LayoutDashboard, exact: true },
           { path: '/purchases/vendors', label: 'Fournisseurs', icon: Building2 },
@@ -166,6 +175,7 @@ const erpNavigation: Array<{ label: string; sections: SidebarSection[] }> = [
       {
         label: 'Finance',
         icon: CircleDollarSign,
+        moduleKey: 'finance',
         children: [
           { path: '/finance', label: 'Resume argent', icon: LayoutDashboard, exact: true },
           { path: '/finance/revenues', label: 'Entrees', icon: ArrowUpRight },
@@ -176,6 +186,7 @@ const erpNavigation: Array<{ label: string; sections: SidebarSection[] }> = [
       {
         label: 'Rapports',
         icon: ReceiptText,
+        moduleKey: 'finance',
         children: [
           { path: '/reports', label: 'Rapport activite', icon: BarChart3, exact: true },
         ],
@@ -188,6 +199,7 @@ const erpNavigation: Array<{ label: string; sections: SidebarSection[] }> = [
       {
         label: 'Administration',
         icon: Settings,
+        moduleKey: 'settings',
         children: [
           { path: '/settings', label: 'Parametres', icon: Settings, exact: true },
           { path: '/users', label: 'Utilisateurs', icon: Users, exact: true },
@@ -213,20 +225,21 @@ function ErpAppShell({ children, companySlug }: { children: React.ReactNode, com
   const canManage = Boolean(
     auth.user?.isOwner || auth.activeCompany?.permissions?.includes('company.manage'),
   )
+  const enabledModules = new Set(auth.activeCompany?.enabledModules ?? [])
   const navigation = React.useMemo(() => {
-    if (canManage) return erpNavigation
     return erpNavigation
       .map((group) => ({
         ...group,
         sections: group.sections
+          .filter((section) => section.moduleKey === 'settings' || enabledModules.has(section.moduleKey))
           .map((section) => ({
             ...section,
-            children: section.children.filter((child) => !adminOnlyPaths.has(child.path)),
+            children: section.children.filter((child) => canManage || !adminOnlyPaths.has(child.path)),
           }))
           .filter((section) => section.children.length > 0),
       }))
       .filter((group) => group.sections.length > 0)
-  }, [canManage])
+  }, [canManage, auth.activeCompany?.enabledModules])
 
   function buildCompanyPath(nextCompanySlug: string) {
     const parts = pathname.split('/').filter(Boolean)

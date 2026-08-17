@@ -5,6 +5,7 @@ import {
   Check,
   FileCheck2,
   Palette,
+  Pencil,
   Plus,
   Printer,
   Save,
@@ -16,7 +17,7 @@ import {
 } from 'lucide-react'
 import * as React from 'react'
 import { getQuoteData } from '~/server/dataFetchers'
-import { createQuote, saveQuoteSettings, updateQuoteStatus } from '~/server/operations'
+import { createQuote, deleteQuote, saveQuoteSettings, updateQuote, updateQuoteStatus } from '~/server/operations'
 import { useMoney } from '~/context/CompanyContext'
 import { ImageUploadField } from '~/components/ImageUploadField'
 
@@ -62,6 +63,7 @@ function QuotesPage() {
   const [settings, setSettings] = React.useState<any>(data.settings)
   const [selectedQuoteId, setSelectedQuoteId] = React.useState<string>(data.quotes[0]?.id ?? '')
   const [activeModal, setActiveModal] = React.useState<Modal>(null)
+  const [editingQuote, setEditingQuote] = React.useState<any | null>(null)
   const [message, setMessage] = React.useState('')
   const [searchTerm, setSearchTerm] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>('All')
@@ -107,6 +109,17 @@ function QuotesPage() {
     const updated = await updateQuoteStatus({ data: { companySlug, quoteId, status } })
     setQuotes((current) => current.map((quote) => quote.id === updated.id ? updated : quote))
     setMessage(`Devis ${updated.reference} marque: ${statusLabels[status]}.`)
+  }
+
+  async function removeQuote(quote: any) {
+    if (!window.confirm(`Supprimer definitivement le devis ${quote.reference} ?`)) return
+    try {
+      await deleteQuote({ data: { companySlug, quoteId: quote.id } })
+      setQuotes((current) => current.filter((item) => item.id !== quote.id))
+      setSelectedQuoteId('')
+      setMessage(`Devis ${quote.reference} supprime.`)
+      await refresh()
+    } catch (error: any) { setMessage(error.message || 'Suppression impossible.') }
   }
 
   return (
@@ -224,6 +237,8 @@ function QuotesPage() {
                               >
                                 {Object.entries(statusLabels).map(([status, label]) => <option key={status} value={status}>{label}</option>)}
                               </select>
+                              {quote.status !== 'Accepted' ? <button onClick={() => { setEditingQuote(quote); setActiveModal('quote') }} className="rounded border border-slate-300 p-1.5 text-slate-600" title="Modifier"><Pencil className="size-3.5" /></button> : null}
+                              {quote.status !== 'Accepted' ? <button onClick={() => void removeQuote(quote)} className="rounded border border-rose-200 p-1.5 text-rose-600" title="Supprimer"><Trash2 className="size-3.5" /></button> : null}
                             </div>
                           </td>
                         </tr>
@@ -278,16 +293,20 @@ function QuotesPage() {
 
       {activeModal === 'quote' ? (
         <QuoteModal
+          initialQuote={editingQuote}
           customers={data.customers}
           items={data.items}
           defaultTerms={settings.paymentTerms}
-          onClose={() => setActiveModal(null)}
+          onClose={() => { setActiveModal(null); setEditingQuote(null) }}
           onSubmit={async (payload) => {
-            const quote = await createQuote({ data: { companySlug, ...payload } })
-            setQuotes((current) => [quote, ...current])
+            const quote = editingQuote
+              ? await updateQuote({ data: { companySlug, quoteId: editingQuote.id, ...payload } })
+              : await createQuote({ data: { companySlug, ...payload } })
+            setQuotes((current) => editingQuote ? current.map((item) => item.id === quote.id ? quote : item) : [quote, ...current])
             setSelectedQuoteId(quote.id)
             setActiveModal(null)
-            setMessage(`Devis ${quote.reference} cree.`)
+            setEditingQuote(null)
+            setMessage(`Devis ${quote.reference} ${editingQuote ? 'modifie' : 'cree'}.`)
             await refresh()
           }}
         />
@@ -312,12 +331,14 @@ function QuotesPage() {
 }
 
 function QuoteModal({
+  initialQuote,
   customers,
   items,
   defaultTerms,
   onClose,
   onSubmit,
 }: {
+  initialQuote?: any | null
   customers: any[]
   items: any[]
   defaultTerms: string
@@ -325,16 +346,16 @@ function QuoteModal({
   onSubmit: (payload: any) => Promise<void>
 }) {
   const { formatMoney } = useMoney()
-  const [customerId, setCustomerId] = React.useState('')
+  const [customerId, setCustomerId] = React.useState(initialQuote?.customerId ?? '')
   const [customerName, setCustomerName] = React.useState('')
   const [customerEmail, setCustomerEmail] = React.useState('')
-  const [title, setTitle] = React.useState('Proposition commerciale')
-  const [validUntil, setValidUntil] = React.useState(defaultValidUntil())
-  const [discountRate, setDiscountRate] = React.useState('0')
-  const [taxRate, setTaxRate] = React.useState('0')
-  const [notes, setNotes] = React.useState('')
-  const [terms, setTerms] = React.useState(defaultTerms)
-  const [lines, setLines] = React.useState<QuoteLineForm[]>([
+  const [title, setTitle] = React.useState(initialQuote?.title ?? 'Proposition commerciale')
+  const [validUntil, setValidUntil] = React.useState(initialQuote ? new Date(initialQuote.validUntil).toISOString().slice(0, 10) : defaultValidUntil())
+  const [discountRate, setDiscountRate] = React.useState(String(initialQuote?.discountRate ?? 0))
+  const [taxRate, setTaxRate] = React.useState(String(initialQuote?.taxRate ?? 0))
+  const [notes, setNotes] = React.useState(initialQuote?.notes ?? '')
+  const [terms, setTerms] = React.useState(initialQuote?.terms ?? defaultTerms)
+  const [lines, setLines] = React.useState<QuoteLineForm[]>(initialQuote?.lines?.map((line: any) => ({ itemId: line.itemId ?? '', description: line.description, quantity: String(line.quantity), unitPrice: String(line.unitPrice) })) ?? [
     { itemId: items[0]?.id ?? '', description: items[0]?.name ?? '', quantity: '1', unitPrice: String(items[0]?.price ?? 0) },
   ])
   const [error, setError] = React.useState('')
@@ -401,7 +422,7 @@ function QuoteModal({
   }
 
   return (
-    <Modal title="Nouveau devis" onClose={onClose} size="wide">
+    <Modal title={initialQuote ? `Modifier ${initialQuote.reference}` : 'Nouveau devis'} onClose={onClose} size="wide">
       <form onSubmit={handleSubmit} className="grid gap-5 lg:grid-cols-[1fr_280px]">
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">

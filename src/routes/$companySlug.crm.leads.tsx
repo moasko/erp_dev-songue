@@ -1,8 +1,8 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { Check, Mail, Plus, Search, X } from 'lucide-react'
+import { Check, Mail, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import { useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react'
 import { getCrmData } from '~/server/dataFetchers'
-import { createCrmLead } from '~/server/operations'
+import { createCrmLead, deleteCrmLead, updateCrmLead } from '~/server/operations'
 
 export const Route = createFileRoute('/$companySlug/crm/leads')({
   loader: async ({ params }) => getCrmData({ data: { companySlug: params.companySlug } }),
@@ -16,6 +16,7 @@ function CrmLeads() {
   const [leads, setLeads] = useState<any[]>(data.leads)
   const [query, setQuery] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [form, setForm] = useState({ name: '', company: '', email: '', phone: '', source: 'POS' })
   const visibleLeads = leads.filter((lead) => `${lead.name} ${lead.company ?? ''} ${lead.email ?? ''}`.toLowerCase().includes(query.toLowerCase()))
@@ -27,11 +28,33 @@ function CrmLeads() {
       setMessage('Renseigne au minimum le nom du client.')
       return
     }
-    const result = await createCrmLead({ data: { companySlug, ...form, name } })
-    setLeads((current) => [result.lead, ...current])
+    if (editingLeadId) {
+      const current = leads.find((lead) => lead.id === editingLeadId)
+      const result = await updateCrmLead({ data: { companySlug, leadId: editingLeadId, ...form, name, status: current?.status ?? 'New' } })
+      setLeads((items) => items.map((lead) => lead.id === editingLeadId ? result : lead))
+      setMessage(`${result.name} modifie.`)
+    } else {
+      const result = await createCrmLead({ data: { companySlug, ...form, name } })
+      setLeads((current) => [result.lead, ...current])
+      setMessage(`${result.lead.name} ajoute au CRM et disponible comme client.`)
+    }
     setIsModalOpen(false)
+    setEditingLeadId(null)
     setForm({ name: '', company: '', email: '', phone: '', source: 'POS' })
-    setMessage(`${result.lead.name} ajoute au CRM et disponible comme client.`)
+    await router.invalidate()
+  }
+
+  function editLead(lead: any) {
+    setEditingLeadId(lead.id)
+    setForm({ name: lead.name ?? '', company: lead.company ?? '', email: lead.email ?? '', phone: lead.phone ?? '', source: lead.source ?? 'POS' })
+    setIsModalOpen(true)
+  }
+
+  async function removeLead(lead: any) {
+    if (!window.confirm(`Supprimer definitivement « ${lead.name} » ?`)) return
+    await deleteCrmLead({ data: { companySlug, leadId: lead.id } })
+    setLeads((current) => current.filter((item) => item.id !== lead.id))
+    setMessage(`${lead.name} supprime.`)
     await router.invalidate()
   }
 
@@ -71,7 +94,7 @@ function CrmLeads() {
                 <th className="px-4 py-3 font-semibold">Contact</th>
                 <th className="px-4 py-3 font-semibold">Entreprise</th>
                 <th className="px-4 py-3 font-semibold">Statut</th>
-                <th className="px-4 py-3 text-right font-semibold">Contact</th>
+                <th className="px-4 py-3 text-right font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -95,10 +118,14 @@ function CrmLeads() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
+                    <div className="inline-flex gap-2">
                     <button className="inline-flex items-center gap-2 rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-900">
                       <Mail className="size-4" />
                       Email
                     </button>
+                    <button onClick={() => editLead(lead)} className="inline-flex items-center gap-1.5 rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"><Pencil className="size-3.5" />Modifier</button>
+                    <button onClick={() => void removeLead(lead)} className="inline-flex items-center gap-1.5 rounded border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50"><Trash2 className="size-3.5" />Supprimer</button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -108,7 +135,7 @@ function CrmLeads() {
       </div>
 
       {isModalOpen ? (
-        <Modal title="Ajouter un client" onClose={() => setIsModalOpen(false)}>
+        <Modal title={editingLeadId ? 'Modifier le prospect' : 'Ajouter un client'} onClose={() => { setIsModalOpen(false); setEditingLeadId(null) }}>
           <form onSubmit={addLead} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <TextField label="Nom" value={form.name} onChange={(value) => setForm((current) => ({ ...current, name: value }))} required />
@@ -123,7 +150,7 @@ function CrmLeads() {
               </button>
               <button type="submit" className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 dark:bg-cyan-400 dark:text-slate-950 dark:hover:bg-cyan-300">
                 <Check className="size-4" />
-                Enregistrer
+                {editingLeadId ? 'Mettre a jour' : 'Enregistrer'}
               </button>
             </div>
           </form>

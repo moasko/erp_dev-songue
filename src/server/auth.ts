@@ -45,6 +45,7 @@ type AuthCompany = {
   locale?: string | null
   roles: string[]
   permissions: string[]
+  enabledModules: string[]
 }
 
 export type AuthState = {
@@ -640,6 +641,7 @@ export const getCompanyAdministration = createServerFn({ method: 'GET' })
           include: { permissions: { include: { permission: true } }, users: true },
           orderBy: { createdAt: 'asc' },
         },
+        modules: { include: { module: true }, orderBy: { moduleId: 'asc' } },
       },
     })
 
@@ -680,10 +682,13 @@ export const getCompanyAdministration = createServerFn({ method: 'GET' })
       users:
         company?.memberships.map((membership) => ({
           id: membership.id,
+          userId: membership.user.id,
+          isOwner: membership.user.isOwner,
           name: membership.user.name,
           email: membership.user.email,
           status: membership.status,
           roles: membership.roles.map((role) => role.role.name),
+          roleIds: membership.roles.map((role) => role.role.id),
           lastLoginAt: membership.user.lastLoginAt?.toISOString() ?? null,
         })) ?? [],
       roles:
@@ -696,7 +701,24 @@ export const getCompanyAdministration = createServerFn({ method: 'GET' })
           permissions: role.permissions.map((permission) => permission.permission.key),
         })) ?? [],
       permissions: permissions.map((permission) => ({ id: permission.id, key: permission.key, moduleKey: permission.moduleKey })),
+      modules: company?.modules.map((entry) => ({ key: entry.moduleId, name: entry.module.name, category: entry.module.category, description: entry.module.description ?? '', enabled: entry.enabled })) ?? [],
     }
+  })
+
+export const updateCompanyModule = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ companySlug: z.string().min(1), moduleKey: z.string().min(1), enabled: z.boolean() }))
+  .handler(async ({ data }) => {
+    const auth = await readAuthState()
+    const access = auth.companies.find((company) => company.slug === data.companySlug)
+    if (!auth.user || (!auth.user.isOwner && !access?.permissions.includes(data.enabled ? 'module.enable' : 'module.disable'))) return { ok: false, message: 'Permission insuffisante.' }
+    if (data.moduleKey === 'settings' && !data.enabled) return { ok: false, message: 'Le module Administration doit rester actif.' }
+    const company = await prisma.company.findUnique({ where: { slug: data.companySlug } })
+    const definition = await prisma.moduleDefinition.findUnique({ where: { key: data.moduleKey } })
+    if (!company || !definition) return { ok: false, message: 'Module ou entreprise introuvable.' }
+    await prisma.companyModule.upsert({ where: { companyId_moduleId: { companyId: company.id, moduleId: data.moduleKey } }, update: { enabled: data.enabled }, create: { companyId: company.id, moduleId: data.moduleKey, enabled: data.enabled } })
+    await prisma.auditLog.create({ data: { companyId: company.id, actorId: auth.user.id, action: data.enabled ? 'module.enabled' : 'module.disabled', entity: 'CompanyModule', entityId: data.moduleKey } })
+    invalidateSessionCache()
+    return { ok: true }
   })
 
 export const getInstallationSettings = createServerFn({ method: 'GET' })
@@ -878,6 +900,108 @@ export const createRole = createServerFn({ method: 'POST' })
         description: data.description?.trim(),
         permissions: { create: permissions.map((permission) => ({ permissionId: permission.id })) },
       },
+    })
+
+    invalidateSessionCache()
+    return { ok: true }
+  })
+
+const roleMutationInput = z.object({
+  companySlug: z.string().min(1),
+  roleId: z.string().min(1),
+})
+
+export const updateRole = createServerFn({ method: 'POST' })
+  .inputValidator(
+    roleMutationInput.extend({
+      name: z.string().trim().min(2).max(80),
+      description: z.string().trim().max(240).optional(),
+      permissionKeys: z.array(z.string()).min(1),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const auth = await readAuthState()
+    const access = auth.companies.find((company) => company.slug === data.companySlug)
+    if (!auth.user || (!auth.user.isOwner && !access?.permissions.includes('company.manage'))) {
+      return { ok: false, message: 'Permission insuffisante.' }
+    }
+    const actorId = auth.user.id
+
+    const role = await prisma.role.findFirst({
+      where: { id: data.roleId, company: { slug: data.companySlug } },
+    })
+    if (!role) return { ok: false, message: 'Role introuvable.' }
+    if (role.systemKey) return { ok: false, message: 'Les roles systeme ne peuvent pas etre modifies.' }
+
+    const duplicate = await prisma.role.findFirst({
+      where: { companyId: role.companyId, name: data.name, id: { not: role.id } },
+    })
+    if (duplicate) return { ok: false, message: 'Un role porte deja ce nom.' }
+
+    const permissionKeys = Array.from(new Set(data.permissionKeys))
+    const permissions = await prisma.permission.findMany({ where: { key: { in: permissionKeys } } })
+    if (permissions.length !== permissionKeys.length) {
+      return { ok: false, message: 'Une ou plusieurs permissions sont invalides.' }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.rolePermission.deleteMany({ where: { roleId: role.id } })
+      await tx.role.update({
+        where: { id: role.id },
+        data: {
+          name: data.name,
+          description: data.description || null,
+          permissions: { create: permissions.map((permission) => ({ permissionId: permission.id })) },
+        },
+      })
+      await tx.auditLog.create({
+        data: {
+          companyId: role.companyId,
+          actorId,
+          action: 'role.updated',
+          entity: 'Role',
+          entityId: role.id,
+          metadata: JSON.stringify({ name: data.name, permissionKeys }),
+        },
+      })
+    })
+
+    invalidateSessionCache()
+    return { ok: true }
+  })
+
+export const deleteRole = createServerFn({ method: 'POST' })
+  .inputValidator(roleMutationInput)
+  .handler(async ({ data }) => {
+    const auth = await readAuthState()
+    const access = auth.companies.find((company) => company.slug === data.companySlug)
+    if (!auth.user || (!auth.user.isOwner && !access?.permissions.includes('company.manage'))) {
+      return { ok: false, message: 'Permission insuffisante.' }
+    }
+    const actorId = auth.user.id
+
+    const role = await prisma.role.findFirst({
+      where: { id: data.roleId, company: { slug: data.companySlug } },
+      include: { _count: { select: { users: true } } },
+    })
+    if (!role) return { ok: false, message: 'Role introuvable.' }
+    if (role.systemKey) return { ok: false, message: 'Les roles systeme ne peuvent pas etre supprimes.' }
+    if (role._count.users > 0) {
+      return { ok: false, message: 'Retire d abord ce role de tous les utilisateurs.' }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          companyId: role.companyId,
+          actorId,
+          action: 'role.deleted',
+          entity: 'Role',
+          entityId: role.id,
+          metadata: JSON.stringify({ name: role.name }),
+        },
+      })
+      await tx.role.delete({ where: { id: role.id } })
     })
 
     invalidateSessionCache()

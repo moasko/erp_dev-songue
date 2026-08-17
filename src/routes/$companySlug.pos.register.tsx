@@ -4,7 +4,7 @@ import { useMemo, useState, type ComponentType, type ReactNode } from 'react'
 import { type CatalogCategory, type CatalogItem } from '~/domain/catalogData'
 import { useCompany, useMoney } from '~/context/CompanyContext'
 import { getPosData } from '~/server/dataFetchers'
-import { createPosSale } from '~/server/operations'
+import { closePosSession, createPosSale, openPosSession } from '~/server/operations'
 
 type CartLine = {
   item: CatalogItem
@@ -51,6 +51,7 @@ function PosRegister() {
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false)
   const [actionMessage, setActionMessage] = useState('')
   const [isCheckingOut, setIsCheckingOut] = useState(false)
+  const [currentSession, setCurrentSession] = useState<any | null>(data.currentSession)
 
   const productCategoryIds = Array.from(new Set(products.map((item: CatalogItem) => item.categoryId)))
   const categories = data.categories.map(toCatalogCategory).filter((category: CatalogCategory) => productCategoryIds.includes(category.id))
@@ -142,7 +143,6 @@ function PosRegister() {
     setCart([])
     setQuery('')
     await router.invalidate()
-    printTicketSoon()
   }
 
   function printTicketSoon() {
@@ -150,19 +150,48 @@ function PosRegister() {
     window.setTimeout(() => window.print(), 250)
   }
 
+  async function openSession() {
+    const session = await openPosSession({ data: { companySlug, openingBalance: 0 } })
+    setCurrentSession(session); setActionMessage('Session de caisse ouverte.'); await router.invalidate()
+  }
+
+  async function closeSession() {
+    const raw = window.prompt('Montant reel compte dans la caisse', '0')
+    if (raw === null) return
+    const closingBalance = Number(raw)
+    if (!Number.isFinite(closingBalance) || closingBalance < 0) { setActionMessage('Montant invalide.'); return }
+    const session = await closePosSession({ data: { companySlug, closingBalance } })
+    setCurrentSession(null)
+    const difference = closingBalance - (session.expectedBalance ?? 0)
+    setActionMessage(`Session fermee. Ecart de caisse: ${formatMoney(difference)}.`); await router.invalidate()
+  }
+
   return (
     <main className="app-page-bg min-h-[calc(100vh-4rem)]">
+      {!currentSession ? (
+        <div className="fixed inset-0 z-40 grid place-items-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded border border-slate-200 bg-white p-7 text-center shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+            <div className="mx-auto grid size-16 place-items-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"><Wallet className="size-8" /></div>
+            <h2 className="mt-5 text-2xl font-bold text-slate-950 dark:text-white">La caisse est prete</h2>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Ouvre la session, ajoute les articles puis appuie sur Encaisser. Rien d'autre a configurer.</p>
+            <button onClick={() => void openSession()} className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded bg-emerald-600 px-5 py-4 text-base font-bold text-white hover:bg-emerald-500"><Wallet className="size-5" />Ouvrir la caisse</button>
+          </div>
+        </div>
+      ) : null}
       <div className="grid min-h-[calc(100vh-4rem)] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_390px] xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="flex min-h-0 flex-col px-4 py-5 sm:px-6 lg:h-[calc(100vh-4rem)] lg:overflow-hidden lg:px-8">
           <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-cyan-500">Vente rapide</p>
               <h1 className="mt-1 text-2xl font-bold text-slate-950 dark:text-white">Nouvelle vente</h1>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{activeCompany.name} - session caisse ouverte</p>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{activeCompany.name} - {currentSession ? `session ouverte depuis ${new Date(currentSession.openedAt).toLocaleTimeString('fr-FR')}` : 'caisse fermee'}</p>
             </div>
+            <div className="flex items-center gap-2">
+            <button onClick={() => void (currentSession ? closeSession() : openSession())} className={`rounded px-3 py-2 text-xs font-bold ${currentSession ? 'border border-rose-200 text-rose-600' : 'bg-emerald-600 text-white'}`}>{currentSession ? 'Fermer la caisse' : 'Ouvrir la caisse'}</button>
             <div className="neon-surface grid grid-cols-2 rounded px-3 py-2 text-center">
               <MiniStat label="Articles" value={cartCount.toString()} />
               <MiniStat label="Total" value={formatMoney(total)} />
+            </div>
             </div>
           </div>
 
@@ -173,6 +202,11 @@ function PosRegister() {
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return
+                    const exact = products.find((item) => item.sku.toLowerCase() === query.trim().toLowerCase())
+                    if (exact) { event.preventDefault(); addItem(exact); setQuery('') }
+                  }}
                   placeholder="Scanner ou rechercher un produit"
                   className="h-12 w-full rounded border border-slate-300 bg-white py-2 pl-10 pr-4 text-base font-semibold text-slate-950 outline-none focus:border-slate-950 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:border-cyan-400"
                 />
@@ -269,7 +303,7 @@ function PosRegister() {
 
             <button
               onClick={checkout}
-              disabled={cart.length === 0 || isCheckingOut}
+              disabled={cart.length === 0 || isCheckingOut || !currentSession}
               className="inline-flex w-full items-center justify-center gap-2 rounded bg-slate-950 px-4 py-4 text-base font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400 dark:bg-cyan-400 dark:text-slate-950 dark:hover:bg-cyan-300 dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
             >
               <ReceiptText className="size-5" />

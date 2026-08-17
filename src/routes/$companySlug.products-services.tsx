@@ -13,14 +13,16 @@ import {
   List,
   Package,
   PackagePlus,
+  Pencil,
   Plus,
   Search,
   SlidersHorizontal,
+  Trash2,
   X,
 } from 'lucide-react'
 import { type CatalogCategory, type CatalogItem, type CatalogItemStatus, type CatalogItemType } from '~/domain/catalogData'
 import { getCatalogData } from '~/server/dataFetchers'
-import { createCatalogCategory, createCatalogItem, restockCatalogItem, updateCatalogItemStatus } from '~/server/operations'
+import { createCatalogCategory, createCatalogItem, deleteCatalogItem, restockCatalogItem, updateCatalogItem, updateCatalogItemStatus } from '~/server/operations'
 import { useMoney } from '~/context/CompanyContext'
 import { ImageUploadField } from '~/components/ImageUploadField'
 
@@ -104,6 +106,7 @@ function CatalogPage() {
   const [filterType, setFilterType] = useState<'All' | CatalogItemType>('All')
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
   const [activeModal, setActiveModal] = useState<CatalogModal>(null)
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [productForm, setProductForm] = useState<ProductFormState>(productFormDefaults)
   const [productStep, setProductStep] = useState(0)
   const [categoryForm, setCategoryForm] = useState<CategoryFormState>(categoryFormDefaults)
@@ -134,6 +137,7 @@ function CatalogPage() {
   }, [filterType, items, searchQuery, stockFilter])
 
   function openProductModal(type: CatalogItemType = 'Product') {
+    setEditingItemId(null)
     const nextNumber = items.length + 1
     const nextSkuPrefix = type === 'Product' ? 'PROD' : 'SERV'
     const firstCategory = categories.find((category) => category.type === type) ?? categories[0]
@@ -144,6 +148,18 @@ function CatalogPage() {
       categoryId: firstCategory?.id ?? '',
       stock: type === 'Product' ? '0' : '',
       minStockLevel: type === 'Product' ? '5' : '',
+    })
+    setProductStep(0)
+    setActiveModal('product')
+  }
+
+  function editProduct(item: CatalogItem) {
+    setEditingItemId(item.id)
+    setProductForm({
+      name: item.name, sku: item.sku, type: item.type, categoryId: item.categoryId ?? '',
+      description: item.description ?? '', supplier: item.supplier ?? '', cost: String(item.cost),
+      price: String(item.price), wholesalePrice: String(item.wholesalePrice), stock: item.stock === null ? '' : String(item.stock),
+      minStockLevel: item.minStockLevel == null ? '' : String(item.minStockLevel), status: item.status, imageUrl: item.imageUrl ?? '',
     })
     setProductStep(0)
     setActiveModal('product')
@@ -243,8 +259,7 @@ function CatalogPage() {
     if (isSaving) return
     setIsSaving(true)
     try {
-      const newItem = toCatalogItem(await createCatalogItem({
-        data: {
+      const payload = {
           companySlug,
           name,
           sku,
@@ -259,11 +274,18 @@ function CatalogPage() {
           minStockLevel: productForm.type === 'Product' ? Math.max(0, Math.floor(minStockLevel || 0)) : undefined,
           status: productForm.status,
           imageUrl: productForm.imageUrl.trim() || undefined,
+      }
+      const savedItem = toCatalogItem(editingItemId
+        ? await updateCatalogItem({ data: { ...payload, itemId: editingItemId } })
+        : await createCatalogItem({
+        data: {
+          ...payload,
         },
       }))
-      setItems((current) => [newItem, ...current])
+      setItems((current) => editingItemId ? current.map((item) => item.id === editingItemId ? savedItem : item) : [savedItem, ...current])
       setActiveModal(null)
-      setActionMessage(`${newItem.name} ajoute au catalogue.`)
+      setEditingItemId(null)
+      setActionMessage(`${savedItem.name} ${editingItemId ? 'modifie' : 'ajoute au catalogue'}.`)
       await router.invalidate()
     } catch (error: any) {
       setActionMessage(error.message || 'Impossible d ajouter cet article.')
@@ -332,6 +354,19 @@ function CatalogPage() {
       await router.invalidate()
     } catch (error: any) {
       setActionMessage(error.message || 'Impossible de modifier le statut.')
+    }
+  }
+
+  async function removeProduct(itemId: string) {
+    const item = items.find((candidate) => candidate.id === itemId)
+    if (!item || !window.confirm(`Supprimer definitivement « ${item.name} » ?`)) return
+    try {
+      await deleteCatalogItem({ data: { companySlug, itemId } })
+      setItems((current) => current.filter((candidate) => candidate.id !== itemId))
+      setActionMessage(`${item.name} supprime.`)
+      await router.invalidate()
+    } catch (error: any) {
+      setActionMessage(error.message || 'Impossible de supprimer cet article.')
     }
   }
 
@@ -429,14 +464,14 @@ function CatalogPage() {
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredItems.map((item) => <CatalogCard key={item.id} item={item} categories={categories} onRestock={markRestocked} onToggleStatus={toggleStatus} />)}
+          {filteredItems.map((item) => <CatalogCard key={item.id} item={item} categories={categories} onRestock={markRestocked} onToggleStatus={toggleStatus} onEdit={editProduct} onDelete={removeProduct} />)}
         </div>
       ) : (
-        <CatalogList items={filteredItems} categories={categories} onRestock={markRestocked} onToggleStatus={toggleStatus} />
+        <CatalogList items={filteredItems} categories={categories} onRestock={markRestocked} onToggleStatus={toggleStatus} onEdit={editProduct} onDelete={removeProduct} />
       )}
 
       {activeModal === 'product' ? (
-        <Modal title={productForm.type === 'Product' ? 'Ajouter un produit' : 'Ajouter un service'} onClose={() => setActiveModal(null)} wide>
+        <Modal title={editingItemId ? `Modifier ${productForm.name}` : productForm.type === 'Product' ? 'Ajouter un produit' : 'Ajouter un service'} onClose={() => { setActiveModal(null); setEditingItemId(null) }} wide>
           <form onSubmit={handleProductSubmit} onKeyDown={handleProductKeyDown} className="space-y-5">
             <StepIndicator steps={productSteps} currentIndex={currentStepIndex} />
 
@@ -582,7 +617,7 @@ function CatalogPage() {
   )
 }
 
-function CatalogCard({ item, categories, onRestock, onToggleStatus }: { item: CatalogItem; categories: CatalogCategory[]; onRestock: (id: string) => void; onToggleStatus: (id: string) => void }) {
+function CatalogCard({ item, categories, onRestock, onToggleStatus, onEdit, onDelete }: { item: CatalogItem; categories: CatalogCategory[]; onRestock: (id: string) => void; onToggleStatus: (id: string) => void; onEdit: (item: CatalogItem) => void; onDelete: (id: string) => void }) {
   const { formatMoney } = useMoney()
   const category = categories.find((c) => c.id === item.categoryId)
   const stockState = getStockState(item)
@@ -631,13 +666,17 @@ function CatalogCard({ item, categories, onRestock, onToggleStatus }: { item: Ca
               Recharger
             </button>
           </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button onClick={() => onEdit(item)} className="inline-flex items-center justify-center gap-1.5 rounded border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"><Pencil className="size-3.5" />Modifier</button>
+            <button onClick={() => onDelete(item.id)} className="inline-flex items-center justify-center gap-1.5 rounded border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50"><Trash2 className="size-3.5" />Supprimer</button>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-function CatalogList({ items, categories, onRestock, onToggleStatus }: { items: CatalogItem[]; categories: CatalogCategory[]; onRestock: (id: string) => void; onToggleStatus: (id: string) => void }) {
+function CatalogList({ items, categories, onRestock, onToggleStatus, onEdit, onDelete }: { items: CatalogItem[]; categories: CatalogCategory[]; onRestock: (id: string) => void; onToggleStatus: (id: string) => void; onEdit: (item: CatalogItem) => void; onDelete: (id: string) => void }) {
   const { formatMoney } = useMoney()
   return (
     <div className="overflow-hidden rounded border border-slate-200 bg-white">
@@ -684,6 +723,8 @@ function CatalogList({ items, categories, onRestock, onToggleStatus }: { items: 
                       <button onClick={() => onRestock(item.id)} disabled={item.type === 'Service'} className="rounded bg-slate-950 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400">
                         Stock
                       </button>
+                      <button onClick={() => onEdit(item)} className="rounded border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-50" title="Modifier"><Pencil className="size-3.5" /></button>
+                      <button onClick={() => onDelete(item.id)} className="rounded border border-rose-200 p-1.5 text-rose-600 hover:bg-rose-50" title="Supprimer"><Trash2 className="size-3.5" /></button>
                     </div>
                   </td>
                 </tr>

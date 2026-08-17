@@ -12,7 +12,8 @@ async function getCompany(companySlug: string, permission?: string) {
 export const getFinanceData = createServerFn({ method: 'GET' })
   .inputValidator(z.object({ companySlug: z.string() }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug, 'finance.read')
+    const { requireCompanyAccess } = await import('./access')
+    const { company, user } = await requireCompanyAccess(data.companySlug, 'finance.read')
 
     const [accounts, transactions] = await Promise.all([
       prisma.bankAccount.findMany({ where: { companyId: company.id } }),
@@ -153,12 +154,13 @@ export const getInventoryData = createServerFn({ method: 'GET' })
 export const getPosData = createServerFn({ method: 'GET' })
   .inputValidator(z.object({ companySlug: z.string() }))
   .handler(async ({ data }) => {
-    const company = await getCompany(data.companySlug, 'finance.read')
+    const { requireCompanyAccess } = await import('./access')
+    const { company, user } = await requireCompanyAccess(data.companySlug, 'finance.read')
 
     const todayStart = new Date()
     todayStart.setHours(0, 0, 0, 0)
 
-    const [items, categories, customers, tickets, todayAgg] = await Promise.all([
+    const [items, categories, customers, tickets, todayAgg, currentSession] = await Promise.all([
       prisma.catalogItem.findMany({
         where: { companyId: company.id, status: 'Active' },
         include: { category: true },
@@ -166,27 +168,29 @@ export const getPosData = createServerFn({ method: 'GET' })
       }),
       prisma.category.findMany({ where: { companyId: company.id }, orderBy: { name: 'asc' } }),
       prisma.customer.findMany({ where: { companyId: company.id }, orderBy: { createdAt: 'desc' } }),
-      prisma.transaction.findMany({
-        where: { companyId: company.id, category: 'POS' },
-        include: { account: true },
-        orderBy: { date: 'desc' },
+      prisma.posTicket.findMany({
+        where: { companyId: company.id },
+        include: { lines: true, customer: true, cashier: { select: { id: true, name: true } }, transaction: { include: { account: true } } },
+        orderBy: { createdAt: 'desc' },
         take: 50,
       }),
       // Total du jour en SQL : la liste `tickets` est tronquee a 50 et ne peut
       // pas servir de base a un total fiable.
-      prisma.transaction.aggregate({
-        where: { companyId: company.id, category: 'POS', date: { gte: todayStart } },
-        _sum: { amount: true },
+      prisma.posTicket.aggregate({
+        where: { companyId: company.id, status: 'Completed', createdAt: { gte: todayStart } },
+        _sum: { totalCents: true },
         _count: { _all: true },
       }),
+      prisma.posSession.findFirst({ where: { companyId: company.id, cashierId: user.id, status: 'Open' }, include: { register: true }, orderBy: { openedAt: 'desc' } }),
     ])
 
     return {
       items,
       categories,
       customers,
-      tickets,
-      today: { total: todayAgg._sum.amount ?? 0, count: todayAgg._count._all },
+      tickets: tickets.map((ticket) => ({ ...ticket, date: ticket.createdAt, amount: ticket.totalCents, description: ticket.customer?.name ?? 'Client comptoir', account: ticket.transaction?.account ?? null })),
+      currentSession,
+      today: { total: todayAgg._sum.totalCents ?? 0, count: todayAgg._count._all },
     }
   })
 

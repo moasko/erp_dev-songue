@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Building2, Copy, Image as ImageIcon, KeyRound, LockKeyhole, Mail, Plus, Save, ShieldCheck, ToggleLeft, ToggleRight, Trash2, Users } from 'lucide-react'
+import { Building2, Copy, Image as ImageIcon, KeyRound, LockKeyhole, Mail, Pencil, Plus, Save, ShieldCheck, ToggleLeft, ToggleRight, Trash2, Users, X } from 'lucide-react'
 import * as React from 'react'
-import { createRole, getCompanyAdministration, updateCompanyProfile } from '~/server/auth'
+import { createRole, deleteRole, getCompanyAdministration, updateCompanyModule, updateCompanyProfile, updateRole } from '~/server/auth'
 import { ImageUploadField } from '~/components/ImageUploadField'
 import { defaultCurrency, defaultLocale } from '~/utils/currency'
 import { currencies, locales } from '~/utils/onboarding'
@@ -13,17 +13,19 @@ import {
   disableTotp,
   getSecurityOverview,
   listMySessions,
+  removeMembership,
   revokeInvitation,
   revokeOtherSessions,
   revokeSession,
   startTotpSetup,
+  updateMembership,
 } from '~/server/security'
 
 export const Route = createFileRoute('/$companySlug/settings')({
   component: SettingsPage,
 })
 
-type SettingsTab = 'general' | 'users' | 'security' | 'roles' | 'notifications'
+type SettingsTab = 'general' | 'users' | 'security' | 'roles' | 'modules' | 'notifications'
 
 type AdministrationData = Awaited<ReturnType<typeof getCompanyAdministration>>
 
@@ -32,6 +34,7 @@ const settingsTabs = [
   { key: 'users' as const, label: 'Utilisateurs', icon: Users },
   { key: 'security' as const, label: 'Securite', icon: LockKeyhole },
   { key: 'roles' as const, label: 'Roles & permissions', icon: ShieldCheck },
+  { key: 'modules' as const, label: 'Modules', icon: ToggleRight },
   { key: 'notifications' as const, label: 'Notifications', icon: Mail },
 ]
 
@@ -170,7 +173,8 @@ function SettingsPage() {
             <>
               {activeTab === 'general' && <GeneralSettings companySlug={companySlug} data={data} onSubmit={handleUpdateCompany} />}
               {activeTab === 'users' && <UsersSettings companySlug={companySlug} data={data} onMessage={setMessage} onRefresh={refresh} />}
-              {activeTab === 'roles' && <RolesSettings data={data} onSubmit={handleCreateRole} />}
+              {activeTab === 'roles' && <RolesSettings companySlug={companySlug} data={data} onSubmit={handleCreateRole} onMessage={setMessage} onRefresh={refresh} />}
+              {activeTab === 'modules' && <ModulesSettings companySlug={companySlug} data={data} onMessage={setMessage} onRefresh={refresh} />}
               {activeTab === 'notifications' && <NotificationsSettings />}
             </>
           )}
@@ -303,6 +307,7 @@ function UsersSettings({
   const [generatedLink, setGeneratedLink] = React.useState<string | null>(null)
   const [resetLink, setResetLink] = React.useState<{ email: string; url: string } | null>(null)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [editingMemberId, setEditingMemberId] = React.useState<string | null>(null)
 
   async function handleInvite(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -362,6 +367,34 @@ function UsersSettings({
       onMessage(error?.message ?? 'Impossible de generer le lien.')
     }
   }
+
+  async function handleMemberUpdate(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!editingMemberId || isSubmitting) return
+    const form = new FormData(event.currentTarget)
+    setIsSubmitting(true)
+    try {
+      const result = await updateMembership({ data: {
+        companySlug, membershipId: editingMemberId,
+        roleIds: form.getAll('roleIds').map(String),
+        status: String(form.get('status')) as 'ACTIVE' | 'SUSPENDED',
+      } })
+      onMessage(result.ok ? 'Acces du membre mis a jour.' : result.message)
+      if (result.ok) { setEditingMemberId(null); await onRefresh() }
+    } finally { setIsSubmitting(false) }
+  }
+
+  async function handleRemoveMember(user: (typeof users)[number]) {
+    if (isSubmitting || !window.confirm(`Retirer ${user.name} de cette entreprise ?`)) return
+    setIsSubmitting(true)
+    try {
+      const result = await removeMembership({ data: { companySlug, membershipId: user.id } })
+      onMessage(result.ok ? 'Membre retire de l entreprise.' : result.message)
+      if (result.ok) await onRefresh()
+    } finally { setIsSubmitting(false) }
+  }
+
+  const editingMember = users.find((user) => user.id === editingMemberId)
 
   return (
     <div className="space-y-6">
@@ -432,16 +465,45 @@ function UsersSettings({
                   {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString('fr-FR') : 'Jamais'}
                 </td>
                 <td className="px-4 py-3 text-right">
+                  <div className="inline-flex flex-wrap justify-end gap-2">
                   <button onClick={() => void handleResetLink(user.email)} className="inline-flex items-center gap-1.5 rounded border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50" title="Generer un lien de reinitialisation de mot de passe">
                     <KeyRound className="size-3.5" />
                     Lien de reinit.
                   </button>
+                  {!user.isOwner ? (
+                    <>
+                      <button onClick={() => setEditingMemberId(user.id)} className="inline-flex items-center gap-1.5 rounded border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Pencil className="size-3.5" />Acces</button>
+                      <button onClick={() => void handleRemoveMember(user)} className="inline-flex items-center gap-1.5 rounded border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50"><Trash2 className="size-3.5" />Retirer</button>
+                    </>
+                  ) : null}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {editingMember ? (
+        <SettingsSection title={`Acces de ${editingMember.name}`} description="Attribue ses roles et controle son acces a cette entreprise.">
+          <form onSubmit={handleMemberUpdate} className="space-y-4">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {roles.map((role) => (
+                <label key={role.id} className="flex items-center gap-2 rounded border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                  <input type="checkbox" name="roleIds" value={role.id} defaultChecked={editingMember.roleIds.includes(role.id)} />
+                  {role.name}
+                </label>
+              ))}
+            </div>
+            <select name="status" defaultValue={editingMember.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE'} className="rounded border border-slate-300 px-3 py-2 text-sm">
+              <option value="ACTIVE">Actif</option><option value="SUSPENDED">Suspendu</option>
+            </select>
+            <div className="flex gap-2">
+              <button disabled={isSubmitting} className="inline-flex items-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"><Save className="size-4" />Enregistrer</button>
+              <button type="button" onClick={() => setEditingMemberId(null)} className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600">Annuler</button>
+            </div>
+          </form>
+        </SettingsSection>
+      ) : null}
     </div>
   )
 }
@@ -660,15 +722,88 @@ function shortUserAgent(userAgent: string) {
   return userAgent.slice(0, 60)
 }
 
+function ModulesSettings({ companySlug, data, onMessage, onRefresh }: { companySlug: string; data: AdministrationData | null; onMessage: (message: string) => void; onRefresh: () => Promise<void> }) {
+  const modules = data?.ok ? data.modules : []
+  const [busyKey, setBusyKey] = React.useState<string | null>(null)
+  async function toggle(moduleKey: string, enabled: boolean) {
+    setBusyKey(moduleKey)
+    try {
+      const result = await updateCompanyModule({ data: { companySlug, moduleKey, enabled } })
+      onMessage(result.ok ? `Module ${enabled ? 'active' : 'desactive'}.` : result.message)
+      if (result.ok) await onRefresh()
+    } finally { setBusyKey(null) }
+  }
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      {modules.map((module) => (
+        <div key={module.key} className="rounded border border-slate-200 bg-white p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div><h3 className="font-bold text-slate-950">{module.name}</h3><p className="mt-1 text-xs text-slate-500">{module.description || module.category}</p></div>
+            <button disabled={busyKey === module.key || module.key === 'settings'} onClick={() => void toggle(module.key, !module.enabled)} className="disabled:cursor-not-allowed disabled:opacity-50" aria-label={`${module.enabled ? 'Desactiver' : 'Activer'} ${module.name}`}>
+              {module.enabled ? <ToggleRight className="size-7 text-emerald-600" /> : <ToggleLeft className="size-7 text-slate-300" />}
+            </button>
+          </div>
+          <p className={`mt-4 text-xs font-bold uppercase tracking-wide ${module.enabled ? 'text-emerald-700' : 'text-slate-400'}`}>{module.enabled ? 'Actif' : 'Desactive'}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function RolesSettings({
+  companySlug,
   data,
   onSubmit,
+  onMessage,
+  onRefresh,
 }: {
+  companySlug: string
   data: AdministrationData | null
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
+  onMessage: (message: string) => void
+  onRefresh: () => Promise<void>
 }) {
   const roles = data?.ok ? data.roles : []
   const permissions = data?.ok ? data.permissions : []
+  const [editingRoleId, setEditingRoleId] = React.useState<string | null>(null)
+  const [isBusy, setIsBusy] = React.useState(false)
+
+  async function handleUpdate(event: React.FormEvent<HTMLFormElement>, roleId: string) {
+    event.preventDefault()
+    if (isBusy) return
+    const form = new FormData(event.currentTarget)
+    setIsBusy(true)
+    try {
+      const result = await updateRole({
+        data: {
+          companySlug,
+          roleId,
+          name: String(form.get('name') ?? ''),
+          description: String(form.get('description') ?? ''),
+          permissionKeys: form.getAll('permissionKeys').map(String),
+        },
+      })
+      onMessage(result.ok ? 'Role modifie.' : result.message)
+      if (result.ok) {
+        setEditingRoleId(null)
+        await onRefresh()
+      }
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  async function handleDelete(roleId: string, roleName: string) {
+    if (isBusy || !window.confirm(`Supprimer definitivement le role « ${roleName} » ?`)) return
+    setIsBusy(true)
+    try {
+      const result = await deleteRole({ data: { companySlug, roleId } })
+      onMessage(result.ok ? 'Role supprime.' : result.message)
+      if (result.ok) await onRefresh()
+    } finally {
+      setIsBusy(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -696,6 +831,27 @@ function RolesSettings({
       <div className="grid gap-4 sm:grid-cols-2">
         {roles.map((role) => (
           <div key={role.id} className="list-row rounded border border-slate-200 bg-white p-5">
+            {editingRoleId === role.id ? (
+              <form onSubmit={(event) => void handleUpdate(event, role.id)} className="space-y-4">
+                <div className="grid gap-3">
+                  <input name="name" defaultValue={role.name} required className="rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950" />
+                  <input name="description" defaultValue={role.description} placeholder="Description" className="rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950" />
+                </div>
+                <div className="grid gap-2">
+                  {permissions.map((permission) => (
+                    <label key={permission.key} className="flex items-center gap-2 rounded border border-slate-200 px-3 py-2 text-xs text-slate-700">
+                      <input type="checkbox" name="permissionKeys" value={permission.key} defaultChecked={role.permissions.includes(permission.key)} />
+                      {permission.key}
+                    </label>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button disabled={isBusy} className="inline-flex items-center gap-2 rounded bg-slate-950 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"><Save className="size-3.5" />Enregistrer</button>
+                  <button type="button" onClick={() => setEditingRoleId(null)} className="inline-flex items-center gap-2 rounded border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600"><X className="size-3.5" />Annuler</button>
+                </div>
+              </form>
+            ) : (
+              <>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="font-bold text-slate-950">{role.name}</h3>
@@ -709,6 +865,18 @@ function RolesSettings({
               ))}
               {role.permissions.length > 8 ? <span className="text-xs text-slate-400">+{role.permissions.length - 8}</span> : null}
             </div>
+                <div className="mt-4 flex gap-2 border-t border-slate-100 pt-4">
+                  {role.systemKey ? (
+                    <span className="text-xs font-semibold text-slate-400">Role systeme protege</span>
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => setEditingRoleId(role.id)} className="inline-flex items-center gap-1.5 rounded border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Pencil className="size-3.5" />Modifier</button>
+                      <button type="button" disabled={isBusy} onClick={() => void handleDelete(role.id, role.name)} className="inline-flex items-center gap-1.5 rounded border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"><Trash2 className="size-3.5" />Supprimer</button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         ))}
       </div>

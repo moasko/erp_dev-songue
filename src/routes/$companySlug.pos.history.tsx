@@ -1,9 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Clock, Eye, Printer, ReceiptText, Search, X } from 'lucide-react'
+import { Clock, Eye, Pencil, Printer, ReceiptText, Save, Search, X } from 'lucide-react'
 import { useState } from 'react'
 import { DateRangeFilter, matchesDatePreset, todayInputValue, type DatePreset } from '~/components/DateRangeFilter'
 import { useCompany, useMoney } from '~/context/CompanyContext'
 import { getPosData } from '~/server/dataFetchers'
+import { updatePosTicket } from '~/server/operations'
 
 export const Route = createFileRoute('/$companySlug/pos/history')({
   loader: async ({ params }) => getPosData({ data: { companySlug: params.companySlug } }),
@@ -12,13 +13,19 @@ export const Route = createFileRoute('/$companySlug/pos/history')({
 
 function PosHistory() {
   const { formatMoney } = useMoney()
-  const { tickets } = Route.useLoaderData()
+  const data = Route.useLoaderData()
+  const { companySlug } = Route.useParams()
+  const [tickets, setTickets] = useState<any[]>(data.tickets)
   const { activeCompany } = useCompany()
   const [query, setQuery] = useState('')
   const [datePreset, setDatePreset] = useState<DatePreset>('today')
   const [startDate, setStartDate] = useState(todayInputValue())
   const [endDate, setEndDate] = useState(todayInputValue())
   const [selectedTicket, setSelectedTicket] = useState<any | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [editLines, setEditLines] = useState<Array<{ lineId: string; quantity: number }>>([])
+  const [editPayment, setEditPayment] = useState<'cash' | 'mobile' | 'card'>('cash')
+  const [editCustomer, setEditCustomer] = useState('')
   const periodTickets = tickets.filter((ticket: any) => matchesDatePreset(ticket.date, datePreset, startDate, endDate))
   const visibleTickets = periodTickets.filter((ticket: any) => `${ticket.reference} ${ticket.description}`.toLowerCase().includes(query.toLowerCase()))
   const paidTickets = periodTickets.filter((ticket: any) => ticket.status === 'Completed')
@@ -29,6 +36,22 @@ function PosHistory() {
     if (!ticket || typeof window === 'undefined') return
     setSelectedTicket(ticket)
     window.setTimeout(() => window.print(), 250)
+  }
+
+  function startEditing() {
+    if (!selectedTicket) return
+    setEditLines(selectedTicket.lines.map((line: any) => ({ lineId: line.id, quantity: line.quantity })))
+    setEditPayment(selectedTicket.paymentMethod)
+    setEditCustomer(selectedTicket.customerId ?? '')
+    setEditing(true)
+  }
+
+  async function saveCorrection() {
+    if (!selectedTicket) return
+    const updated = await updatePosTicket({ data: { companySlug, ticketId: selectedTicket.id, customerId: editCustomer || undefined, paymentMethod: editPayment, lines: editLines } })
+    const display = { ...updated, date: updated.createdAt, amount: updated.totalCents, description: updated.customer?.name ?? 'Client comptoir', account: updated.transaction?.account ?? null }
+    setTickets((current) => current.map((ticket) => ticket.id === display.id ? display : ticket))
+    setSelectedTicket(display); setEditing(false)
   }
 
   return (
@@ -159,12 +182,19 @@ function PosHistory() {
                   <TicketInfo label="Paiement" value={paymentLabel(selectedTicket.account?.name)} />
                   <TicketInfo label="Statut" value={ticketStatus(selectedTicket.status)} />
                 </div>
+                <div className="space-y-2 border-b border-dashed border-slate-300 py-4 text-sm">
+                  {selectedTicket.lines?.map((line: any) => (
+                    <div key={line.id} className="flex items-center justify-between gap-3"><span className="flex items-center gap-2">{editing ? <input type="number" min="1" value={editLines.find((item) => item.lineId === line.id)?.quantity ?? line.quantity} onChange={(event) => setEditLines((current) => current.map((item) => item.lineId === line.id ? { ...item, quantity: Math.max(1, Number(event.target.value)) } : item))} className="w-16 rounded border px-2 py-1" /> : line.quantity} × {line.name}</span><span className="font-semibold">{formatMoney(line.unitPrice * (editLines.find((item) => item.lineId === line.id)?.quantity ?? line.quantity))}</span></div>
+                  ))}
+                </div>
+                {editing ? <div className="grid gap-2 border-b border-dashed py-4 text-sm"><select value={editCustomer} onChange={(event) => setEditCustomer(event.target.value)} className="rounded border px-3 py-2"><option value="">Client comptoir</option>{data.customers.map((customer: any) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select><select value={editPayment} onChange={(event) => setEditPayment(event.target.value as any)} className="rounded border px-3 py-2"><option value="cash">Especes</option><option value="mobile">Mobile money</option><option value="card">Carte</option></select></div> : null}
                 <div className="flex items-center justify-between pt-4 text-base font-bold">
                   <span>Total</span>
                   <span>{formatMoney(selectedTicket.amount)}</span>
                 </div>
               </div>
               <div className="mt-4 flex justify-end gap-2">
+                {editing ? <button type="button" onClick={() => void saveCorrection()} className="inline-flex h-10 items-center gap-2 rounded bg-emerald-600 px-4 text-sm font-bold text-white"><Save className="size-4" />Enregistrer</button> : <button type="button" onClick={startEditing} className="inline-flex h-10 items-center gap-2 rounded border border-slate-300 px-4 text-sm font-bold"><Pencil className="size-4" />Corriger</button>}
                 <button type="button" onClick={() => setSelectedTicket(null)} className="inline-flex h-10 items-center justify-center rounded border border-slate-300 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
                   Fermer
                 </button>

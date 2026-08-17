@@ -14,6 +14,7 @@ export type SessionCompany = {
   locale: string | null
   roles: string[]
   permissions: string[]
+  enabledModules: string[]
 }
 
 export type SessionContext = {
@@ -67,7 +68,10 @@ async function loadSessionContext(tokenHash: string): Promise<SessionContext | n
             where: { status: 'ACTIVE' },
             select: {
               company: {
-                select: { id: true, name: true, slug: true, logoUrl: true, currency: true, locale: true },
+                select: {
+                  id: true, name: true, slug: true, logoUrl: true, currency: true, locale: true,
+                  modules: { where: { enabled: true }, select: { moduleId: true } },
+                },
               },
               roles: {
                 select: {
@@ -103,6 +107,7 @@ async function loadSessionContext(tokenHash: string): Promise<SessionContext | n
       logoUrl: membership.company.logoUrl,
       currency: membership.company.currency,
       locale: membership.company.locale,
+      enabledModules: membership.company.modules.map((module) => module.moduleId),
       roles: membership.roles.map((userRole) => userRole.role.name),
       permissions: Array.from(
         new Set(
@@ -164,6 +169,16 @@ export async function requireCompanyAccess(companySlug: string, permission?: str
   if (!company) throw new Error('Company access denied')
 
   const permissions = new Set(company.permissions)
+  const moduleKey = permission?.startsWith('customer.') ? 'crm'
+    : permission?.startsWith('invoice.') ? 'sales'
+      : permission?.startsWith('inventory.') ? 'inventory'
+        : permission?.startsWith('finance.') || permission === 'audit.read' ? 'finance'
+          : permission?.startsWith('employee.') ? 'hr'
+            : permission?.startsWith('company.') || permission?.startsWith('module.') ? 'settings'
+              : null
+  if (moduleKey && moduleKey !== 'settings' && !company.enabledModules.includes(moduleKey)) {
+    throw new Error('Module disabled')
+  }
   if (permission && !context.user.isOwner && !permissions.has(permission)) {
     throw new Error('Permission denied')
   }

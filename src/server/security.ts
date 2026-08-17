@@ -275,6 +275,67 @@ export const revokeInvitation = createServerFn({ method: 'POST' })
     return { ok: true as const }
   })
 
+export const updateMembership = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    companySlug: z.string().min(1),
+    membershipId: z.string().min(1),
+    roleIds: z.array(z.string()).min(1),
+    status: z.enum(['ACTIVE', 'SUSPENDED']),
+  }))
+  .handler(async ({ data }) => {
+    const { user: actor, company } = await requireCompanyAccess(data.companySlug, 'company.manage')
+    const membership = await prisma.companyMembership.findFirst({
+      where: { id: data.membershipId, companyId: company.id },
+      include: { user: true },
+    })
+    if (!membership) return { ok: false as const, message: 'Membre introuvable.' }
+    if (membership.user.isOwner) return { ok: false as const, message: 'Le compte proprietaire ne peut pas etre suspendu ou modifie ici.' }
+
+    const roleIds = Array.from(new Set(data.roleIds))
+    const roles = await prisma.role.findMany({ where: { id: { in: roleIds }, companyId: company.id } })
+    if (roles.length !== roleIds.length) return { ok: false as const, message: 'Un ou plusieurs roles sont invalides.' }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.userRole.deleteMany({ where: { membershipId: membership.id } })
+      await tx.userRole.createMany({ data: roleIds.map((roleId) => ({ membershipId: membership.id, roleId })) })
+      await tx.companyMembership.update({ where: { id: membership.id }, data: { status: data.status } })
+      await tx.auditLog.create({
+        data: {
+          companyId: company.id, actorId: actor.id, action: 'membership.updated',
+          entity: 'CompanyMembership', entityId: membership.id,
+          metadata: JSON.stringify({ email: membership.user.email, roles: roles.map((role) => role.name), status: data.status }),
+        },
+      })
+    })
+    invalidateSessionCache()
+    return { ok: true as const }
+  })
+
+export const removeMembership = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ companySlug: z.string().min(1), membershipId: z.string().min(1) }))
+  .handler(async ({ data }) => {
+    const { user: actor, company } = await requireCompanyAccess(data.companySlug, 'company.manage')
+    const membership = await prisma.companyMembership.findFirst({
+      where: { id: data.membershipId, companyId: company.id },
+      include: { user: true },
+    })
+    if (!membership) return { ok: false as const, message: 'Membre introuvable.' }
+    if (membership.user.isOwner) return { ok: false as const, message: 'Le proprietaire ne peut pas etre retire de son entreprise.' }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          companyId: company.id, actorId: actor.id, action: 'membership.removed',
+          entity: 'CompanyMembership', entityId: membership.id,
+          metadata: JSON.stringify({ email: membership.user.email }),
+        },
+      })
+      await tx.companyMembership.delete({ where: { id: membership.id } })
+    })
+    invalidateSessionCache()
+    return { ok: true as const }
+  })
+
 // ---------------------------------------------------------------------------
 // Reinitialisation de mot de passe par lien (chantier A)
 // ---------------------------------------------------------------------------
